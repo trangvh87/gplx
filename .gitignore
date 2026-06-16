@@ -1,0 +1,32 @@
+﻿# Build outputs
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+
+# DB backups / large data
+DBs/
+
+# Temp script
+.opencode/
+
+# VS user files
+*.user
+*.suo
+
+# Connections / secrets
+connections.json
+appsettings.*.local.json
+
+# Docs / reports / SQL scripts (large)
+docs/
+
+# Test data
+test/
+
+# Backup files
+*.bak
+*.rar
+*.zip
+*.7z
