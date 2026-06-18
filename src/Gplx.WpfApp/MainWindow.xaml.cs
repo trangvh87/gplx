@@ -671,6 +671,7 @@ public partial class MainWindow : Window
             newCsdtCode: string.IsNullOrEmpty(newCsdt) ? null : newCsdt,
             newSoCode: string.IsNullOrEmpty(newSoCode) ? null : newSoCode,
             courseCode: string.IsNullOrEmpty(courseCode) ? null : courseCode,
+            newCourseName: string.IsNullOrWhiteSpace(txtNewCourseName.Text) ? null : txtNewCourseName.Text.Trim(),
             allocateCsdt: allocateCsdt,
             oldCsdt: txtOldCsdt.Text.Trim());
         engine.OnProgress += m => AppendLog(m);
