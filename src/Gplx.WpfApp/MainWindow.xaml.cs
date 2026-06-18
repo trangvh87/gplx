@@ -302,11 +302,19 @@ public partial class MainWindow : Window
             if (mode == "Tạo mới theo thông tư 17")
             {
                 var gen = await GenerateCourseSuffixAsync(newCsdt, courseCode);
-                suffix = gen ?? ((courseCode?.Length ?? 0) > 5 ? courseCode.Substring(5) : "");
+                if (!string.IsNullOrEmpty(gen))
+                    suffix = gen;
+                else if (!string.IsNullOrEmpty(courseCode) && courseCode.Length > 5)
+                    suffix = courseCode.Substring(5);
+                else
+                    suffix = "";
             }
             else
             {
-                suffix = (courseCode?.Length ?? 0) > 5 ? courseCode.Substring(5) : "";
+                if (!string.IsNullOrEmpty(courseCode) && courseCode.Length > 5)
+                    suffix = courseCode.Substring(5);
+                else
+                    suffix = "";
             }
             txtNewCourseCode.Text = $"{newCsdt}{suffix}";
             // prefill course name from source (fallback to empty)
@@ -423,7 +431,7 @@ public partial class MainWindow : Window
     }
 
     // Generate course suffix for TT17: 'K' + YY + NNNN, where YY from NgayTao and NNNN is next sequence per NewCsdt+YY
-    private async Task<string?> GenerateCourseSuffixAsync(string newCsdtBase, string? oldCourseCode)
+    private async Task<string?> GenerateCourseSuffixAsync(string? newCsdtBase, string? oldCourseCode)
     {
         try
         {
@@ -472,7 +480,7 @@ public partial class MainWindow : Window
             // Compute max existing sequence for this newCsdtBase and year-yy using MaKH pattern: LEFT(MaKH,5)=newCsdtBase AND SUBSTRING(MaKH,6,2)=yy
             using var cmdMax = new SqlCommand(
                 "SELECT ISNULL(MAX(TRY_CONVERT(int, RIGHT(MaKH,4))), 0) FROM KhoaHoc WHERE LEFT(ISNULL(MaKH,''),5) = @p AND SUBSTRING(ISNULL(MaKH,''),6,2) = @yy", conn);
-            cmdMax.Parameters.AddWithValue("@p", newCsdtBase);
+            cmdMax.Parameters.AddWithValue("@p", newCsdtBase ?? "");
             cmdMax.Parameters.AddWithValue("@yy", yy);
             cmdMax.CommandTimeout = 10;
             var res = await cmdMax.ExecuteScalarAsync();
