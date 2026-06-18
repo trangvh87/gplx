@@ -103,14 +103,11 @@ public delegate void DbSyncProgressHandler(string message);
         using var conn = new SqlConnection(_destConn);
         await conn.OpenAsync();
             var sql = $"""
-            DECLARE @res int;
-            EXEC @res = sp_getapplock @Resource = N'GplxAllocateCsdt_{province}', @LockMode='Exclusive', @LockTimeout=60000, @LockOwner='Session';
-            IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp mã',16,1); RETURN; END;
             DECLARE @max int = (SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(MaCSDT,3,3))),0) FROM KhoaHoc WHERE LEFT(ISNULL(MaCSDT,''),2) = @p AND LEN(ISNULL(MaCSDT,'')) = 5);
             DECLARE @next int = @max + 1;
             IF @next > 999 BEGIN EXEC sp_releaseapplock @Resource = N'GplxAllocateCsdt_{province}'; RAISERROR('Vượt quá giới hạn cấp mã',16,1); RETURN; END;
             SELECT @next AS NextSeq;
-            EXEC sp_releaseapplock @Resource = N'GplxAllocateCsdt_{province}';
+            EXEC sp_releaseapplock @Resource = N'GplxAllocateCsdt_{province}', @LockOwner='Session';
         """;
 
         try
@@ -356,7 +353,7 @@ public delegate void DbSyncProgressHandler(string message);
                     SET MaKH = @NewCsdt + 'K' + t.yy + RIGHT('0000' + CAST((ISNULL(m.maxseq,0) + t.rn) AS varchar(4)),4)
                     FROM t
                     LEFT JOIN maxes m ON m.yy = t.yy;
-                    EXEC sp_releaseapplock @Resource = @resName;
+                    EXEC sp_releaseapplock @Resource = @resName, @LockOwner='Session';
                     """;
                 updates.Add(sqlAlloc);
                 // Also set MaCSDT column to new code
@@ -442,7 +439,7 @@ public delegate void DbSyncProgressHandler(string message);
                     SET MaDK = @NewCsdt + '-' + t.ymd + '-' + RIGHT('000000' + CAST((ISNULL(m.maxseq,0) + t.rn) AS varchar(6)),6)
                     FROM t
                     LEFT JOIN mx m ON m.ymd = t.ymd;
-                    EXEC sp_releaseapplock @Resource = @resName;
+                    EXEC sp_releaseapplock @Resource = @resName, @LockOwner='Session';
                     """;
                 sql.Add(sqlAlloc);
             }
