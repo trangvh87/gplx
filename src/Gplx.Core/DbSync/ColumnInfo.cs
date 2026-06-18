@@ -1,4 +1,4 @@
-﻿namespace Gplx.WpfApp.DbSync;
+namespace Gplx.Core.DbSync;
 
 public sealed class ColumnInfo
 {

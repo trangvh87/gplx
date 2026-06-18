@@ -1,4 +1,10 @@
-﻿namespace Gplx.WpfApp.Sync;
+﻿using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Gplx.WpfApp.Sync;
 
 public sealed class FileSyncSource : ISyncSource
 {

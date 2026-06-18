@@ -1,0 +1,12 @@
+11/06/2025 14:24: Lỗi vẫn theo nguyên tắc để chữ màu đỏ – sửa AppendLog chỉ tô đỏ khi dòng bắt đầu bằng "LỖI:"
+11/06/2025 14:25: Nội dung hoàn tất đang để màu đỏ – sửa thông báo hiển thị "+X học viên, Y lỗi" thay vì tổng bản ghi các bảng
+11/06/2025 14:30: Nút copy log thêm icon copy và để trong vùng ô log bên trên bên phải
+11/06/2025 14:40: Khi đồng bộ xong thông báo clickable "nhấn vào đây để xem" mở form mới 4 tab (Khóa học, Học viên, Báo cáo I, Báo cáo II)
+11/06/2025 14:50: Người dùng nhấn link trên log không phản ứng – sửa Hyperlink thành Run + PreviewMouseLeftButtonDown
+11/06/2025 15:10: Cập nhật README quy tắc đồng bộ các bảng (13 bảng, course filter, transform, _Cu columns)
+11/06/2025 15:20: Nút copy log cách lề phải hơn, thêm text, copy xong hiển thị "đã sao chép log" tự ẩn sau 2s
+11/06/2025 15:30: ComboBox khóa học order giảm dần MaKH, hiển thị định dạng [mã]-[tên]
+11/06/2025 15:35: Chương trình không hiển thị danh sách khóa học – kiểm tra cột tên trước khi query, fallback nếu không có
+11/06/2025 15:50: Thêm icon mắt cho nút "Xem trước", đổi "Đồng bộ DB" → "Thực hiện" (giữ icon ▶), thêm khoảng cách log-status, xóa "13/13 bảng" khỏi status bar
+11/06/2025 15:55: Khi chọn khóa học kiểm tra mã mới trên db đích – hiển thị "đã tồn tại - nhấn vào để xem" bên cạnh mã mới
+11/06/2025 16:00: Gõ mã khóa học không lọc được danh sách – khôi phục timer search, thêm IsTextSearchEnabled=False + save/restore text để tránh xóa text

@@ -1,6 +1,7 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace Gplx.SyncApp.DbSync;
+namespace Gplx.Core.DbSync;
 
 public sealed class SyncTableConfig
 {
@@ -17,5 +18,5 @@ public sealed class SyncTableConfig
     public string DestTable { get; set; } = "";
 
     [JsonPropertyName("k")]
-    public List<string> KeyColumns { get; set; } = [];
+    public List<string> KeyColumns { get; set; } = new List<string>();
 }

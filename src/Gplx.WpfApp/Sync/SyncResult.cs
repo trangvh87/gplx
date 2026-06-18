@@ -1,4 +1,6 @@
-﻿namespace Gplx.WpfApp.Sync;
+﻿using System.Collections.Generic;
+
+namespace Gplx.WpfApp.Sync;
 
 public sealed class SyncResult
 {
@@ -7,5 +9,5 @@ public sealed class SyncResult
     public int Deleted { get; init; }
     public int Skipped { get; init; }
     public int Errors { get; init; }
-    public IReadOnlyList<string> ErrorMessages { get; init; } = [];
+    public IReadOnlyList<string> ErrorMessages { get; init; } = new List<string>();
 }

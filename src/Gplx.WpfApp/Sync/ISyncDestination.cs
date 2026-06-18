@@ -1,4 +1,7 @@
-﻿namespace Gplx.WpfApp.Sync;
+﻿using System.Threading;
+using System.Threading.Tasks;
+
+namespace Gplx.WpfApp.Sync;
 
 public interface ISyncDestination
 {

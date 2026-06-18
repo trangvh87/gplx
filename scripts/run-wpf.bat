@@ -24,7 +24,7 @@ if errorlevel 1 (
 echo Stopping any running Gplx.WpfApp.exe instances...
 taskkill /f /im Gplx.WpfApp.exe >nul 2>&1
 
-set EXE_PATH=%CD%\src\Gplx.WpfApp\bin\Debug\net8.0-windows\Gplx.WpfApp.exe
+set EXE_PATH=%CD%\src\Gplx.WpfApp\bin\Debug\net48\Gplx.WpfApp.exe
 if exist "%EXE_PATH%" (
   echo Launching %EXE_PATH% ...
   start "" "%EXE_PATH%"

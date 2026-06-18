@@ -1,4 +1,6 @@
-namespace Gplx.SyncApp.DbSync;
+using System;
+
+namespace Gplx.Core.DbSync;
 
 public sealed class SyncResult
 {

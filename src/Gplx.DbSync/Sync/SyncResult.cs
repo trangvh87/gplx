@@ -1,3 +1,5 @@
+using System;
+
 namespace Gplx.DbSync.Sync;
 
 public sealed class SyncResult

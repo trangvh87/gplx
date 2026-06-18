@@ -23,7 +23,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Stopping any running Gplx.WpfApp instances..."
 Get-Process -Name "Gplx.WpfApp" -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force }
 
-$exe = Join-Path (Get-Location) "src\Gplx.WpfApp\bin\Debug\net8.0-windows\Gplx.WpfApp.exe"
+$exe = Join-Path (Get-Location) "src\Gplx.WpfApp\bin\Debug\net48\Gplx.WpfApp.exe"
 if (-Not (Test-Path $exe)) {
     Write-Error "Executable not found: $exe"
     exit 2

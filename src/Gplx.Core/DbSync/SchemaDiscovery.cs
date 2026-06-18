@@ -1,6 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 
-namespace Gplx.SyncApp.DbSync;
+namespace Gplx.Core.DbSync;
 
 public sealed class SchemaDiscovery
 {
@@ -23,14 +26,14 @@ public sealed class SchemaDiscovery
 
         var columns = new List<ColumnInfo>();
 
-        await using var conn = new SqlConnection(connectionString);
+        using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
 
-        await using var cmd = new SqlCommand(sql, conn);
+        using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Schema", schema);
         cmd.Parameters.AddWithValue("@Table", tableName);
 
-        await using var reader = await cmd.ExecuteReaderAsync();
+        using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
             columns.Add(new ColumnInfo

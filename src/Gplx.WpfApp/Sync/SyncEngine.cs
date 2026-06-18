@@ -1,4 +1,10 @@
-﻿namespace Gplx.WpfApp.Sync;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Gplx.WpfApp.Sync;
 
 public delegate void SyncProgressHandler(string message);
 
@@ -27,7 +33,7 @@ public sealed class SyncEngine
         catch (Exception ex)
         {
             Report($"Lá»—i Ä‘á»c nguá»“n: {ex.Message}");
-            return new SyncResult { Errors = 1, ErrorMessages = [ex.Message] };
+            return new SyncResult { Errors = 1, ErrorMessages = new List<string> { ex.Message } };
         }
 
         var added = 0;

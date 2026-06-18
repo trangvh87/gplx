@@ -1,4 +1,6 @@
-﻿namespace Gplx.WpfApp.Sync;
+﻿using System;
+
+namespace Gplx.WpfApp.Sync;
 
 public interface IDataRecord
 {

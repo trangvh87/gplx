@@ -1,4 +1,8 @@
-﻿namespace Gplx.WpfApp.Sync;
+﻿using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Gplx.WpfApp.Sync;
 
 public sealed class FileSyncDestination : ISyncDestination
 {

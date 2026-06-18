@@ -1,4 +1,7 @@
-﻿namespace Gplx.WpfApp.Sync;
+﻿using System;
+using System.IO;
+
+namespace Gplx.WpfApp.Sync;
 
 public sealed class FileDataRecord : IDataRecord
 {

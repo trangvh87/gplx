@@ -1,4 +1,9 @@
+using System;
+using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 using Gplx.DbSync.Models;
 
@@ -33,7 +38,7 @@ public sealed class TableSyncEngine
 
     private async Task<SyncResult> RunSingleTableAsync(SyncTableConfig table)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = Stopwatch.StartNew();
         var tableLabel = $"[{table.DestSchema}].[{table.DestTable}]";
         _progress.Report($"--- Đồng bộ {tableLabel} ---");
 
@@ -55,7 +60,7 @@ public sealed class TableSyncEngine
                 return new SyncResult { TableName = tableLabel, Success = false, ErrorMessage = "No dest columns" };
             }
 
-            var dstNames = dstColumns.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var dstNames = new HashSet<string>(dstColumns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
             var columns = srcColumns.Where(c => dstNames.Contains(c.Name)).ToList();
             var skipped = srcColumns.Where(c => !dstNames.Contains(c.Name)).ToList();
             if (skipped.Count > 0)
@@ -71,7 +76,7 @@ public sealed class TableSyncEngine
             var columnList = string.Join(", ", columns.Select(c => $"[{c.Name}]"));
             var sourceTableFull = $"[{table.SourceSchema}].[{table.SourceTable}]";
             var destTableFull = $"[{table.DestSchema}].[{table.DestTable}]";
-            var tempTable = $"##Gplx_Sync_{table.DestTable}_{Guid.NewGuid().ToString("N")[..8]}";
+            var tempTable = $"##Gplx_Sync_{table.DestTable}_{Guid.NewGuid().ToString("N").Substring(0, 8)}";
 
             var keyCondition = BuildKeyCondition(table.KeyColumns, columns, "S", "T");
 
@@ -83,7 +88,7 @@ public sealed class TableSyncEngine
 
             // 1. Create temp table on destination
             var createSql = BuildCreateTempSql(tempTable, columns, identityCol);
-            await using (var createCmd = new SqlCommand(createSql, dstConn))
+            using (var createCmd = new SqlCommand(createSql, dstConn))
             {
                 createCmd.CommandTimeout = _config.CommandTimeoutSeconds;
                 await createCmd.ExecuteNonQueryAsync();
@@ -109,7 +114,7 @@ public sealed class TableSyncEngine
 
             // Get source count
             long sourceCount;
-            await using (var countCmd = new SqlCommand($"SELECT COUNT(*) FROM {tempTable}", dstConn))
+            using (var countCmd = new SqlCommand($"SELECT COUNT(*) FROM {tempTable}", dstConn))
             {
                 countCmd.CommandTimeout = _config.CommandTimeoutSeconds;
                 sourceCount = Convert.ToInt64(await countCmd.ExecuteScalarAsync() ?? 0);
@@ -137,7 +142,7 @@ public sealed class TableSyncEngine
                 """;
 
             long insertedCount;
-            await using (var insertCmd = new SqlCommand(insertSql, dstConn))
+            using (var insertCmd = new SqlCommand(insertSql, dstConn))
             {
                 insertCmd.CommandTimeout = _config.CommandTimeoutSeconds;
                 insertedCount = await insertCmd.ExecuteNonQueryAsync();
@@ -145,7 +150,7 @@ public sealed class TableSyncEngine
             _progress.Report($"  Đã chèn {insertedCount} bản ghi mới");
 
             // 4. Drop temp table
-            await using (var dropCmd = new SqlCommand($"DROP TABLE {tempTable}", dstConn))
+            using (var dropCmd = new SqlCommand($"DROP TABLE {tempTable}", dstConn))
             {
                 dropCmd.CommandTimeout = _config.CommandTimeoutSeconds;
                 await dropCmd.ExecuteNonQueryAsync();
