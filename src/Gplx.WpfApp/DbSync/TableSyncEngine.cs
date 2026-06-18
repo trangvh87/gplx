@@ -448,7 +448,8 @@ public delegate void DbSyncProgressHandler(string message);
                 // For other tables that reference MaDK, we'll replace MaDK by joining dest.NguoiLX on MaDK_Cu
                 var sqlMap = $"""
                     -- Map old MaDK -> new MaDK using destination NguoiLX.MaDK_Cu
-                    UPDATE [{tempTable}] SET MaDK = ISNULL(n.MaDK, [{tempTable}].MaDK)
+                    UPDATE t
+                    SET MaDK = ISNULL(n.MaDK, t.MaDK)
                     FROM [{tempTable}] t
                     LEFT JOIN NguoiLX n ON n.MaDK_Cu = t.MaDK;
                     """;
