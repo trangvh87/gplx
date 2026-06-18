@@ -112,13 +112,32 @@ public delegate void DbSyncProgressHandler(string message);
             SELECT @next AS NextSeq;
             EXEC sp_releaseapplock @Resource = N'GplxAllocateCsdt_{province}';
         """;
-        using var cmd = new SqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("@p", province);
-        cmd.CommandTimeout = 60;
-        var obj = await cmd.ExecuteScalarAsync();
-        if (obj == null || obj == DBNull.Value) throw new InvalidOperationException("Không nhận được sequence");
-        var next = Convert.ToInt32(obj);
-        _allocatedCsdt = province + next.ToString("D3");
+
+        try
+        {
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@p", province);
+            cmd.CommandTimeout = 60;
+            var obj = await cmd.ExecuteScalarAsync();
+            if (obj == null || obj == DBNull.Value) throw new InvalidOperationException("Không nhận được sequence");
+            var next = Convert.ToInt32(obj);
+            _allocatedCsdt = province + next.ToString("D3");
+        }
+        catch (Exception ex)
+        {
+            // If applock is not available or fails (permissions, unsupported, etc.), fallback to non-atomic allocation
+            Report($"  Cảnh báo: không thể lấy applock, thực hiện cấp mã không nguyên tử: {ex.Message}");
+            using var cmd2 = new SqlCommand(
+                "SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(MaCSDT,3,3))),0) FROM KhoaHoc WHERE LEFT(ISNULL(MaCSDT,''),2) = @p AND LEN(ISNULL(MaCSDT,'')) = 5", conn);
+            cmd2.Parameters.AddWithValue("@p", province);
+            cmd2.CommandTimeout = 30;
+            var r = await cmd2.ExecuteScalarAsync();
+            int max = 0;
+            if (r != null && r != DBNull.Value) { try { max = Convert.ToInt32(r); } catch { max = 0; } }
+            var next = max + 1;
+            if (next > 999) throw new InvalidOperationException("Vượt quá giới hạn cấp mã");
+            _allocatedCsdt = province + next.ToString("D3");
+        }
     }
 
     private async Task<SyncResult> RunSingleTableAsync(SyncTableConfig table)
