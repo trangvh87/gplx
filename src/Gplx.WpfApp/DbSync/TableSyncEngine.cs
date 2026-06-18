@@ -336,7 +336,8 @@ public delegate void DbSyncProgressHandler(string message);
                     -- assumes MaKH format: N1N2N3N4N5KYYNNNN where YY is last two digits of year
                     DECLARE @NewCsdt nvarchar(10) = @NewCsdtCode;
                     DECLARE @res int;
-                    EXEC @res = sp_getapplock @Resource = N'GplxAllocateMaKH_' + @NewCsdt, @LockMode='Exclusive', @LockTimeout=60000;
+                    DECLARE @resName nvarchar(128) = N'GplxAllocateMaKH_' + @NewCsdt;
+                    EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000;
                     IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp MaKH',16,1); RETURN; END;
                     UPDATE [{tempTable}] SET MaKH_Cu = MaKH;
                     ;WITH t AS (
@@ -355,7 +356,7 @@ public delegate void DbSyncProgressHandler(string message);
                     SET MaKH = @NewCsdt + 'K' + t.yy + RIGHT('0000' + CAST((ISNULL(m.maxseq,0) + t.rn) AS varchar(4)),4)
                     FROM t
                     LEFT JOIN maxes m ON m.yy = t.yy;
-                    EXEC sp_releaseapplock @Resource = N'GplxAllocateMaKH_' + @NewCsdt;
+                    EXEC sp_releaseapplock @Resource = @resName;
                     """;
                 updates.Add(sqlAlloc);
                 // Also set MaCSDT column to new code
@@ -419,7 +420,8 @@ public delegate void DbSyncProgressHandler(string message);
                     -- Allocate MaDK for NguoiLX: NewCsdt-yyyymmdd-###### (6-digit sequence), reset per day
                     DECLARE @NewCsdt nvarchar(10) = @NewCsdtCode;
                     DECLARE @res int;
-                    EXEC @res = sp_getapplock @Resource = N'GplxAllocateMaDK_' + @NewCsdt, @LockMode='Exclusive', @LockTimeout=60000;
+                    DECLARE @resName nvarchar(128) = N'GplxAllocateMaDK_' + @NewCsdt;
+                    EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000;
                     IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp MaDK',16,1); RETURN; END;
                     -- store old value
                     UPDATE [{tempTable}] SET MaDK_Cu = MaDK;
@@ -440,7 +442,7 @@ public delegate void DbSyncProgressHandler(string message);
                     SET MaDK = @NewCsdt + '-' + t.ymd + '-' + RIGHT('000000' + CAST((ISNULL(m.maxseq,0) + t.rn) AS varchar(6)),6)
                     FROM t
                     LEFT JOIN mx m ON m.ymd = t.ymd;
-                    EXEC sp_releaseapplock @Resource = N'GplxAllocateMaDK_' + @NewCsdt;
+                    EXEC sp_releaseapplock @Resource = @resName;
                     """;
                 sql.Add(sqlAlloc);
             }
