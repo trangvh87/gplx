@@ -22,6 +22,7 @@ public delegate void DbSyncProgressHandler(string message);
     private readonly string? _newSoCode;
     private readonly string? _courseCode;
     private readonly string? _newCourseName;
+    private readonly string? _explicitNewCourseCode;
     private readonly string _runId = Guid.NewGuid().ToString("N");
     private readonly bool _allocateCsdt;
     private readonly string? _oldCsdt;
@@ -36,7 +37,8 @@ public delegate void DbSyncProgressHandler(string message);
         string? newCsdtCode = null,
         string? newSoCode = null,
         string? courseCode = null,
-        string? newCourseName = null)
+        string? newCourseName = null,
+        string? explicitNewCourseCode = null)
     {
         _sourceConn = sourceConn;
         _destConn = destConn;
@@ -47,6 +49,7 @@ public delegate void DbSyncProgressHandler(string message);
         _newSoCode = newSoCode;
         _courseCode = courseCode;
         _newCourseName = newCourseName;
+        _explicitNewCourseCode = explicitNewCourseCode;
         _allocateCsdt = false;
         _oldCsdt = null;
     }
@@ -59,9 +62,10 @@ public delegate void DbSyncProgressHandler(string message);
         string? newSoCode = null,
         string? courseCode = null,
         string? newCourseName = null,
+        string? explicitNewCourseCode = null,
         bool allocateCsdt = false,
         string? oldCsdt = null)
-        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName)
+        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName, explicitNewCourseCode)
     {
         _allocateCsdt = allocateCsdt;
         _oldCsdt = oldCsdt;
@@ -356,6 +360,13 @@ public delegate void DbSyncProgressHandler(string message);
                     EXEC sp_releaseapplock @Resource = @resName, @LockOwner='Session';
                     """;
                 updates.Add(sqlAlloc);
+                // if explicit full MaKH provided, set it directly and skip TT17 allocation
+                if (!string.IsNullOrEmpty(_explicitNewCourseCode))
+                {
+                    updates.Add($"UPDATE [{tempTable}] SET [MaKH_Cu] = [MaKH], [MaKH] = @ExplicitMaKH");
+                    // ensure MaCSDT matches left 5 chars
+                    updates.Add($"UPDATE [{tempTable}] SET [MaCSDT_Cu] = [MaCSDT], [MaCSDT] = LEFT(@ExplicitMaKH, 5)");
+                }
                 // Also set MaCSDT column to new code
                     updates.Add($"UPDATE [{tempTable}] SET [MaCSDT_Cu] = [MaCSDT], [MaCSDT] = @NewCsdtCode");
                 // set course name if provided
@@ -382,6 +393,8 @@ public delegate void DbSyncProgressHandler(string message);
                 var csdtParam = _allocatedCsdt ?? _newCsdtCode;
                 if (!string.IsNullOrEmpty(csdtParam))
                     cmd.Parameters.AddWithValue("@NewCsdtCode", csdtParam);
+                if (!string.IsNullOrEmpty(_explicitNewCourseCode))
+                    cmd.Parameters.AddWithValue("@ExplicitMaKH", _explicitNewCourseCode);
                 if (!string.IsNullOrEmpty(_newSoCode))
                     cmd.Parameters.AddWithValue("@NewSoCode", _newSoCode);
                 // pass new course name if available
