@@ -302,12 +302,8 @@ public partial class MainWindow : Window
             if (mode == "Tạo mới theo thông tư 17")
             {
                 var gen = await GenerateCourseSuffixAsync(newCsdt, courseCode);
-                if (!string.IsNullOrEmpty(gen))
-                    suffix = gen;
-                else if (!string.IsNullOrEmpty(courseCode) && courseCode.Length > 5)
-                    suffix = courseCode.Substring(5);
-                else
-                    suffix = "";
+                var fallback = (!string.IsNullOrEmpty(courseCode) && courseCode.Length > 5) ? courseCode.Substring(5) : "";
+                suffix = !string.IsNullOrEmpty(gen) ? gen! : fallback;
             }
             else
             {
