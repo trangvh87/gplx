@@ -99,7 +99,7 @@ public delegate void DbSyncProgressHandler(string message);
     private async Task AllocateCsdtAtomicAsync()
     {
         if (string.IsNullOrEmpty(_oldCsdt)) throw new InvalidOperationException("Old CSĐT required");
-        var province = _oldCsdt.Substring(0, 2);
+        var province = _oldCsdt!.Substring(0, 2);
         using var conn = new SqlConnection(_destConn);
         await conn.OpenAsync();
         var sql = $"""
