@@ -102,9 +102,9 @@ public delegate void DbSyncProgressHandler(string message);
         var province = _oldCsdt!.Substring(0, 2);
         using var conn = new SqlConnection(_destConn);
         await conn.OpenAsync();
-        var sql = $"""
+            var sql = $"""
             DECLARE @res int;
-            EXEC @res = sp_getapplock @Resource = N'GplxAllocateCsdt_{province}', @LockMode='Exclusive', @LockTimeout=60000;
+            EXEC @res = sp_getapplock @Resource = N'GplxAllocateCsdt_{province}', @LockMode='Exclusive', @LockTimeout=60000, @LockOwner='Session';
             IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp mã',16,1); RETURN; END;
             DECLARE @max int = (SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(MaCSDT,3,3))),0) FROM KhoaHoc WHERE LEFT(ISNULL(MaCSDT,''),2) = @p AND LEN(ISNULL(MaCSDT,'')) = 5);
             DECLARE @next int = @max + 1;
@@ -337,7 +337,7 @@ public delegate void DbSyncProgressHandler(string message);
                     DECLARE @NewCsdt nvarchar(10) = @NewCsdtCode;
                     DECLARE @res int;
                     DECLARE @resName nvarchar(128) = N'GplxAllocateMaKH_' + @NewCsdt;
-                    EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000;
+                    EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000, @LockOwner='Session';
                     IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp MaKH',16,1); RETURN; END;
                     UPDATE [{tempTable}] SET MaKH_Cu = MaKH;
                     ;WITH t AS (
@@ -421,7 +421,7 @@ public delegate void DbSyncProgressHandler(string message);
                     DECLARE @NewCsdt nvarchar(10) = @NewCsdtCode;
                     DECLARE @res int;
                     DECLARE @resName nvarchar(128) = N'GplxAllocateMaDK_' + @NewCsdt;
-                    EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000;
+                    EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000, @LockOwner='Session';
                     IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp MaDK',16,1); RETURN; END;
                     -- store old value
                     UPDATE [{tempTable}] SET MaDK_Cu = MaDK;
