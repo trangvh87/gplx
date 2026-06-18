@@ -260,20 +260,25 @@
                           KeyUp="CmbCourseCode_KeyUp"
                           SelectionChanged="CmbCourseCode_SelectionChanged"
                           DropDownOpened="CmbCourseCode_DropDownOpened"/>
-                <StackPanel Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="3"
-                            Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
-                    <StackPanel Orientation="Vertical">
+                <!-- Responsive layout for new course code and name -->
+                <Grid Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="3" Margin="4,2" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Vertical">
                         <TextBox x:Name="txtNewCourseCode" FontSize="12" Foreground="#0078D4" FontWeight="SemiBold" Width="220" Style="{StaticResource InputBox}"/>
-                        <TextBox x:Name="txtNewCourseName" FontSize="11" Foreground="#666666" Margin="0,4,0,0" Width="420" Style="{StaticResource InputBox}"/>
                     </StackPanel>
-                    <TextBlock x:Name="txtExistLink" Visibility="Collapsed" Margin="6,0,0,0"
+                    <TextBox Grid.Column="1" x:Name="txtNewCourseName" FontSize="11" Foreground="#666666" Margin="8,0,0,0" Style="{StaticResource InputBox}" HorizontalAlignment="Stretch"/>
+                    <TextBlock Grid.Column="2" x:Name="txtExistLink" Visibility="Collapsed" Margin="6,0,0,0"
                                VerticalAlignment="Center" FontSize="11" Cursor="Hand">
                         <Hyperlink x:Name="lnkExist" RequestNavigate="LnkExist_RequestNavigate"
                                    NavigateUri="about:blank">
                             <Run Text="đã tồn tại - nhấn vào để xem"/>
                         </Hyperlink>
                     </TextBlock>
-                </StackPanel>
+                </Grid>
                 <Button Grid.Row="2" Grid.Column="7" x:Name="btnPreview" Style="{StaticResource PrimaryButton}" Click="BtnPreview_Click">
                     <StackPanel Orientation="Horizontal">
                         <Path Data="M12,4.5 C7,4.5 2.73,7.61 1,12 C2.73,16.39 7,19.5 12,19.5 C17,19.5 21.27,16.39 23,12 C21.27,7.61 17,4.5 12,4.5 Z M12,17 C9.24,17 7,14.76 7,12 C7,9.24 9.24,7 12,7 C14.76,7 17,9.24 17,12 C17,14.76 14.76,17 12,17 Z M12,9 C10.34,9 9,10.34 9,12 C9,13.66 10.34,15 12,15 C13.66,15 15,13.66 15,12 C15,10.34 13.66,9 12,9 Z"

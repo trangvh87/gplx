@@ -181,13 +181,11 @@ public partial class MainWindow : Window
         }
         var oldSo = txtOldSoCode.Text.Trim();
         var newSo = txtNewSoCode.Text.Trim();
-        // When TT17 is chosen, override the courseCode to use the new CSĐT + suffix
+        // Determine which courseCode to use for querying preview data.
+        // For preview we must always query the SOURCE DB using the original course (MaKH) selected
+        // by the user. TT17 generation only affects what will be used for INSERT into destination,
+        // but preview must show source rows tied to the selected MaKH.
         var courseCode = GetCourseCode();
-        if (mode == "Tạo mới theo thông tư 17")
-        {
-            var courseSuffix = courseCode.Length > 5 ? courseCode.Substring(5) : "";
-            courseCode = (newCsdt ?? txtNewCsdt.Text.Trim()) + courseSuffix;
-        }
         if (string.IsNullOrEmpty(oldCsdt) || string.IsNullOrEmpty(newCsdt) ||
             string.IsNullOrEmpty(oldSo) || string.IsNullOrEmpty(newSo) ||
             string.IsNullOrEmpty(courseCode))
