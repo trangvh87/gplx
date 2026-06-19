@@ -25,8 +25,7 @@ public delegate void DbSyncProgressHandler(string message);
     private readonly string? _explicitNewCourseCode;
     private readonly string _runId = Guid.NewGuid().ToString("N");
     private readonly bool _allocateCsdt;
-    private readonly string? _oldCsdt;
-    private string? _allocatedCsdt; // set when allocation performed atomically
+    private readonly bool _captureCuAlways;
 
     public event DbSyncProgressHandler? OnProgress;
 
@@ -51,7 +50,23 @@ public delegate void DbSyncProgressHandler(string message);
         _newCourseName = newCourseName;
         _explicitNewCourseCode = explicitNewCourseCode;
         _allocateCsdt = false;
-        _oldCsdt = null;
+        _captureCuAlways = false;
+    }
+
+    public TableSyncEngine(
+        string sourceConn, string destConn,
+        List<SyncTableConfig> tables,
+        int batchSize, int commandTimeout,
+        string? newCsdtCode = null,
+        string? newSoCode = null,
+        string? courseCode = null,
+        string? newCourseName = null,
+        string? explicitNewCourseCode = null,
+        bool allocateCsdt = false)
+        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName, explicitNewCourseCode)
+    {
+        _allocateCsdt = allocateCsdt;
+        _captureCuAlways = false;
     }
 
     public TableSyncEngine(
@@ -64,29 +79,15 @@ public delegate void DbSyncProgressHandler(string message);
         string? newCourseName = null,
         string? explicitNewCourseCode = null,
         bool allocateCsdt = false,
-        string? oldCsdt = null)
-        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName, explicitNewCourseCode)
+        bool captureCuAlways = false)
+        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName, explicitNewCourseCode, allocateCsdt)
     {
-        _allocateCsdt = allocateCsdt;
-        _oldCsdt = oldCsdt;
+        _captureCuAlways = captureCuAlways;
     }
 
     public async Task<List<SyncResult>> RunAllAsync()
     {
         var results = new List<SyncResult>();
-        if (_allocateCsdt && !string.IsNullOrEmpty(_oldCsdt))
-        {
-            try
-            {
-                await AllocateCsdtAtomicAsync();
-                Report($"  Đã cấp mã CSĐT mới: {_allocatedCsdt}");
-            }
-            catch (Exception ex)
-            {
-                Report($"LỖI: Không thể cấp mã CSĐT: {ex.Message}");
-                return results;
-            }
-        }
         foreach (var table in _tables)
         {
             var result = await RunSingleTableAsync(table);
@@ -98,47 +99,6 @@ public delegate void DbSyncProgressHandler(string message);
             }
         }
         return results;
-    }
-
-    private async Task AllocateCsdtAtomicAsync()
-    {
-        if (string.IsNullOrEmpty(_oldCsdt)) throw new InvalidOperationException("Old CSĐT required");
-        var province = _oldCsdt!.Substring(0, 2);
-        using var conn = new SqlConnection(_destConn);
-        await conn.OpenAsync();
-            var sql = $"""
-            DECLARE @max int = (SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(MaCSDT,3,3))),0) FROM KhoaHoc WHERE LEFT(ISNULL(MaCSDT,''),2) = @p AND LEN(ISNULL(MaCSDT,'')) = 5);
-            DECLARE @next int = @max + 1;
-            IF @next > 999 BEGIN EXEC sp_releaseapplock @Resource = N'GplxAllocateCsdt_{province}'; RAISERROR('Vượt quá giới hạn cấp mã',16,1); RETURN; END;
-            SELECT @next AS NextSeq;
-            EXEC sp_releaseapplock @Resource = N'GplxAllocateCsdt_{province}', @LockOwner='Session';
-        """;
-
-        try
-        {
-            using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@p", province);
-            cmd.CommandTimeout = 60;
-            var obj = await cmd.ExecuteScalarAsync();
-            if (obj == null || obj == DBNull.Value) throw new InvalidOperationException("Không nhận được sequence");
-            var next = Convert.ToInt32(obj);
-            _allocatedCsdt = province + next.ToString("D3");
-        }
-        catch (Exception ex)
-        {
-            // If applock is not available or fails (permissions, unsupported, etc.), fallback to non-atomic allocation
-            Report($"  Cảnh báo: không thể lấy applock, thực hiện cấp mã không nguyên tử: {ex.Message}");
-            using var cmd2 = new SqlCommand(
-                "SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(MaCSDT,3,3))),0) FROM KhoaHoc WHERE LEFT(ISNULL(MaCSDT,''),2) = @p AND LEN(ISNULL(MaCSDT,'')) = 5", conn);
-            cmd2.Parameters.AddWithValue("@p", province);
-            cmd2.CommandTimeout = 30;
-            var r = await cmd2.ExecuteScalarAsync();
-            int max = 0;
-            if (r != null && r != DBNull.Value) { try { max = Convert.ToInt32(r); } catch { max = 0; } }
-            var next = max + 1;
-            if (next > 999) throw new InvalidOperationException("Vượt quá giới hạn cấp mã");
-            _allocatedCsdt = province + next.ToString("D3");
-        }
     }
 
     private async Task<SyncResult> RunSingleTableAsync(SyncTableConfig table)
@@ -208,6 +168,33 @@ public delegate void DbSyncProgressHandler(string message);
             Report($"  Bảng tạm {tempTable}");
 
             var selectSql = BuildSelectSql(srcFull, colList, table.DestTable, table.DestSchema);
+            // If we created _Cu columns in the temp table, include source columns aliased into those _Cu columns
+            // so that the bulk copy writes the original values directly.
+            if (cuCols.Count > 0)
+            {
+                var cuAliases = new List<string>();
+                foreach (var cu in cuCols)
+                {
+                    var orig = cu.EndsWith("_Cu", StringComparison.OrdinalIgnoreCase)
+                        ? cu.Substring(0, cu.Length - 3)
+                        : null;
+                    if (orig != null && columns.Any(c => c.Name.Equals(orig, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        cuAliases.Add($"[{orig}] AS [{cu}]");
+                    }
+                }
+                if (cuAliases.Count > 0)
+                {
+                    var idx = selectSql.IndexOf(" FROM ", StringComparison.OrdinalIgnoreCase);
+                    if (idx > 0)
+                    {
+                        selectSql = selectSql.Substring(0, idx) + ", " + string.Join(", ", cuAliases) + selectSql.Substring(idx);
+                    }
+                }
+            }
+            // Log the SELECT used for bulk copy and the CourseCode parameter for diagnostics
+            Report($"  SELECT SQL: {selectSql}");
+            if (!string.IsNullOrEmpty(_courseCode)) Report($"  CourseCode param: {_courseCode}");
             using (var bulk = new SqlBulkCopy(dstConn)
             {
                 DestinationTableName = tempTable,
@@ -216,6 +203,14 @@ public delegate void DbSyncProgressHandler(string message);
                 EnableStreaming = true
             })
             {
+                // Ensure explicit column mappings by name so aliased _Cu columns map correctly
+                var srcColNames = columns.Select(c => c.Name).ToList();
+                srcColNames.AddRange(cuCols);
+                foreach (var name in srcColNames)
+                {
+                    try { bulk.ColumnMappings.Add(name, name); } catch { /* ignore duplicates */ }
+                }
+
                 using var cmd = new SqlCommand(selectSql, srcConn);
                 cmd.CommandTimeout = _commandTimeout;
                 if (!string.IsNullOrEmpty(_courseCode))
@@ -233,8 +228,81 @@ public delegate void DbSyncProgressHandler(string message);
             }
             Report($"  Copy {sourceCount} bản ghi");
 
+            // Ensure "_Cu" columns capture the original source values immediately after bulk copy.
+            // Some transforms rely on these _Cu snapshots (MaSoGTVT_Cu, MaKH_Cu, MaCSDT_Cu, etc.).
+            try
+            {
+                var cuAssignments = new List<string>();
+                // Map of Cu column -> original column name
+                var cuMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["MaSoGTVT_Cu"] = "MaSoGTVT",
+                    ["MaKH_Cu"] = "MaKH",
+                    ["MaCSDT_Cu"] = "MaCSDT",
+                    ["MaKhoaHoc_Cu"] = "MaKhoaHoc",
+                    ["MaDK_Cu"] = "MaDK"
+                };
+
+                var dstNamesSet = new HashSet<string>(columns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+                foreach (var kv in cuMap)
+                {
+                    var cu = kv.Key;
+                    var orig = kv.Value;
+                    if (dstNamesSet.Contains(orig))
+                    {
+                        cuAssignments.Add($"[{cu}] = [{orig}]");
+                    }
+                }
+
+                if (cuAssignments.Count > 0)
+                {
+                    var updateSql = $"UPDATE [{tempTable}] SET {string.Join(", ", cuAssignments)}";
+                    using var cmdCu = new SqlCommand(updateSql, dstConn);
+                    cmdCu.CommandTimeout = _commandTimeout;
+                    await cmdCu.ExecuteNonQueryAsync();
+                    Report($"  Initialized _Cu columns: {string.Join(",", cuAssignments.Select(s => s.Split('=')[0].Trim()))}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Report($"  Cảnh báo: không thể khởi tạo các cột _Cu trên bảng tạm: {ex.Message}");
+            }
+
             await ApplyTransformAsync(dstConn, tempTable, table.DestTable);
             Report($"  Transform mã");
+
+            // Diagnostic logging: report distinct MaKH/MaKhoaHoc values in the temp table
+            try
+            {
+                if (columns.Any(c => c.Name == "MaKH" || c.Name == "MaKhoaHoc"))
+                {
+                    using var cmdCount = new SqlCommand($"SELECT COUNT(*) FROM {tempTable} WHERE ISNULL(MaKH,'') <> ''", dstConn);
+                    cmdCount.CommandTimeout = _commandTimeout;
+                    var cnt = Convert.ToInt32(await cmdCount.ExecuteScalarAsync());
+                    Report($"  Temp table {tempTable} MaKH non-empty count: {cnt}");
+
+                    using var cmdDistinct = new SqlCommand($"SELECT DISTINCT TOP 10 ISNULL(MaKH,'') FROM {tempTable}", dstConn);
+                    cmdDistinct.CommandTimeout = _commandTimeout;
+                    using var rdr = await cmdDistinct.ExecuteReaderAsync();
+                    var vals = new List<string>();
+                    while (await rdr.ReadAsync()) vals.Add(rdr.GetString(0));
+                    Report($"  Temp table {tempTable} distinct MaKH (up to 10): {string.Join(", ", vals)}");
+
+                    // also check destination KhoaHoc for the explicit target MaKH if provided
+                    if (!string.IsNullOrEmpty(_explicitNewCourseCode))
+                    {
+                        using var cmdExist = new SqlCommand("SELECT COUNT(*) FROM KhoaHoc WHERE MaKH = @p", dstConn);
+                        cmdExist.Parameters.AddWithValue("@p", _explicitNewCourseCode);
+                        cmdExist.CommandTimeout = _commandTimeout;
+                        var exist = Convert.ToInt32(await cmdExist.ExecuteScalarAsync());
+                        Report($"  Dest KhoaHoc has explicit MaKH={_explicitNewCourseCode}: {exist}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Report($"  Diagnostic log failed: {ex.Message}");
+            }
 
             var allColList = colList;
             if (cuCols.Count > 0)
@@ -249,6 +317,48 @@ public delegate void DbSyncProgressHandler(string message);
             {
                 identityOn = $"SET IDENTITY_INSERT {dstFull} ON;";
                 identityOff = $";SET IDENTITY_INSERT {dstFull} OFF;";
+            }
+
+            // Diagnostic: compute how many rows in the temp table and how many already exist in destination
+            try
+            {
+                var keyCols = table.KeyColumns.Where(k => columns.Any(c => c.Name.Equals(k, StringComparison.OrdinalIgnoreCase))).ToList();
+                if (keyCols.Count > 0)
+                {
+                    var tempCountSql = $"SELECT COUNT(*) FROM {tempTable}";
+                    using var cmdTempCount = new SqlCommand(tempCountSql, dstConn);
+                    cmdTempCount.CommandTimeout = _commandTimeout;
+                    var tempCount = Convert.ToInt32(await cmdTempCount.ExecuteScalarAsync());
+                    Report($"  Temp rows: {tempCount}");
+
+                    var joinCond = string.Join(" AND ", keyCols.Select(k => $"t.[{k}] = d.[{k}]"));
+                    var existsSql = $"SELECT COUNT(*) FROM {tempTable} t INNER JOIN {dstFull} d ON {joinCond}";
+                    using var cmdExists = new SqlCommand(existsSql, dstConn);
+                    cmdExists.CommandTimeout = _commandTimeout;
+                    var existCount = Convert.ToInt32(await cmdExists.ExecuteScalarAsync());
+                    Report($"  Temp rows already present in dest (by key): {existCount}");
+
+                    var toInsert = tempCount - existCount;
+                    Report($"  Rows expected to insert: {toInsert}");
+
+                    // show sample keys that would be inserted
+                    var sampleSql = $"SELECT TOP 10 {string.Join(", ", keyCols.Select(k => $"t.[{k}]") )} FROM {tempTable} t WHERE NOT EXISTS (SELECT 1 FROM {dstFull} d WHERE {joinCond})";
+                    using var cmdSample = new SqlCommand(sampleSql, dstConn);
+                    cmdSample.CommandTimeout = _commandTimeout;
+                    using var rdr = await cmdSample.ExecuteReaderAsync();
+                    var samples = new List<string>();
+                    while (await rdr.ReadAsync())
+                    {
+                        var vals = new List<string>();
+                        for (int i = 0; i < rdr.FieldCount; i++) vals.Add(rdr.IsDBNull(i) ? "NULL" : rdr.GetValue(i).ToString());
+                        samples.Add(string.Join("|", vals));
+                    }
+                    if (samples.Count > 0) Report($"  Sample keys to insert (up to 10): {string.Join(", ", samples)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Report($"  Diagnostic join check failed: {ex.Message}");
             }
 
             var insertSql = $"""
@@ -333,42 +443,51 @@ public delegate void DbSyncProgressHandler(string message);
                 if (tableName == "KhoaHoc")
                 {
                 var sqlAlloc = $"""
-                    -- Allocate new MaKH for each row in {tempTable} using TT17 structure
-                    -- assumes MaKH format: N1N2N3N4N5KYYNNNN where YY is last two digits of year
-                    DECLARE @NewCsdt nvarchar(10) = @NewCsdtCode;
-                    DECLARE @res int;
-                    DECLARE @resName nvarchar(128) = N'GplxAllocateMaKH_' + @NewCsdt;
-                    EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000, @LockOwner='Session';
-                    IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp MaKH',16,1); RETURN; END;
-                    UPDATE [{tempTable}] SET MaKH_Cu = MaKH;
-                    ;WITH t AS (
-                        SELECT *, ROW_NUMBER() OVER (PARTITION BY RIGHT(CONVERT(varchar(4), YEAR(ISNULL(NgayTao, GETDATE()))),2) ORDER BY (SELECT 1)) AS rn,
-                               RIGHT(CONVERT(varchar(4), YEAR(ISNULL(NgayTao, GETDATE()))),2) AS yy
-                        FROM {tempTable}
-                    ), maxes AS (
-                        SELECT yy, ISNULL(MAX(CAST(SUBSTRING(MaKH,8,4) AS int)),0) AS maxseq
-                        FROM (
-                            SELECT DISTINCT RIGHT(CONVERT(varchar(4), YEAR(ISNULL(NgayTao, GETDATE()))),2) AS yy FROM {tempTable}
-                        ) x
-                        LEFT JOIN KhoaHoc k ON LEFT(k.MaKH,5) = @NewCsdt AND SUBSTRING(k.MaKH,6,2) = x.yy
-                        GROUP BY yy
-                    )
-                    UPDATE t
-                    SET MaKH = @NewCsdt + 'K' + t.yy + RIGHT('0000' + CAST((ISNULL(m.maxseq,0) + t.rn) AS varchar(4)),4)
-                    FROM t
-                    LEFT JOIN maxes m ON m.yy = t.yy;
-                    EXEC sp_releaseapplock @Resource = @resName, @LockOwner='Session';
+                    BEGIN TRY
+                        BEGIN TRAN;
+                        -- Allocate new MaKH for each row in {tempTable} using TT17 structure
+                        -- assumes MaKH format: N1N2N3N4N5KYYNNNN where YY is last two digits of year
+                        DECLARE @NewCsdt nvarchar(10) = @NewCsdtCode;
+                        DECLARE @res int;
+                        DECLARE @resName nvarchar(128) = N'GplxAllocateMaKH_' + @NewCsdt;
+                        EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000, @LockOwner='Session';
+                        IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp MaKH',16,1); ROLLBACK TRAN; RETURN; END;
+                        UPDATE [{tempTable}] SET MaKH_Cu = MaKH;
+                        ;WITH t AS (
+                            SELECT *, ROW_NUMBER() OVER (PARTITION BY RIGHT(CONVERT(varchar(4), YEAR(ISNULL(NgayTao, GETDATE()))),2) ORDER BY (SELECT 1)) AS rn,
+                                   RIGHT(CONVERT(varchar(4), YEAR(ISNULL(NgayTao, GETDATE()))),2) AS yy
+                            FROM {tempTable}
+                        ), maxes AS (
+                            SELECT yy, ISNULL(MAX(CAST(SUBSTRING(MaKH,8,4) AS int)),0) AS maxseq
+                            FROM (
+                                SELECT DISTINCT RIGHT(CONVERT(varchar(4), YEAR(ISNULL(NgayTao, GETDATE()))),2) AS yy FROM {tempTable}
+                            ) x
+                            LEFT JOIN KhoaHoc k ON LEFT(k.MaKH,5) = @NewCsdt AND SUBSTRING(k.MaKH,6,2) = x.yy
+                            GROUP BY yy
+                        )
+                        UPDATE t
+                        SET MaKH = @NewCsdt + 'K' + t.yy + RIGHT('0000' + CAST((ISNULL(m.maxseq,0) + t.rn) AS varchar(4)),4)
+                        FROM t
+                        LEFT JOIN maxes m ON m.yy = t.yy;
+                        EXEC sp_releaseapplock @Resource = @resName, @LockOwner='Session';
+                        COMMIT TRAN;
+                    END TRY
+                    BEGIN CATCH
+                        IF XACT_STATE() <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRAN;
+                        DECLARE @err nvarchar(4000) = ERROR_MESSAGE();
+                        RAISERROR(@err,16,1);
+                    END CATCH
                     """;
                 updates.Add(sqlAlloc);
                 // if explicit full MaKH provided, set it directly and skip TT17 allocation
                 if (!string.IsNullOrEmpty(_explicitNewCourseCode))
                 {
-                    updates.Add($"UPDATE [{tempTable}] SET [MaKH_Cu] = [MaKH], [MaKH] = @ExplicitMaKH");
+                    updates.Add($"UPDATE [{tempTable}] SET [MaKH_Cu] = ISNULL([MaKH_Cu],[MaKH]), [MaKH] = @ExplicitMaKH");
                     // ensure MaCSDT matches left 5 chars
-                    updates.Add($"UPDATE [{tempTable}] SET [MaCSDT_Cu] = [MaCSDT], [MaCSDT] = LEFT(@ExplicitMaKH, 5)");
+                    updates.Add($"UPDATE [{tempTable}] SET [MaCSDT_Cu] = ISNULL([MaCSDT_Cu],[MaCSDT]), [MaCSDT] = LEFT(@ExplicitMaKH, 5)");
                 }
                 // Also set MaCSDT column to new code
-                    updates.Add($"UPDATE [{tempTable}] SET [MaCSDT_Cu] = [MaCSDT], [MaCSDT] = @NewCsdtCode");
+                    updates.Add($"UPDATE [{tempTable}] SET [MaCSDT_Cu] = ISNULL([MaCSDT_Cu],[MaCSDT]), [MaCSDT] = @NewCsdtCode");
                 // set course name if provided
                 if (!string.IsNullOrEmpty(_newCourseName))
                 {
@@ -387,10 +506,24 @@ public delegate void DbSyncProgressHandler(string message);
             updates.AddRange(GetSoCodeTransform(tableName, tempTable));
         }
 
+            // If an explicit full course code was provided by the user, ensure non-KhoaHoc tables
+            // also get their MaKH/MaKhoaHoc/MaCSDT values overridden to that explicit value so
+            // foreign keys remain consistent with the KhoaHoc row which may have been set
+            // to @ExplicitMaKH earlier.
+            if (!string.IsNullOrEmpty(_explicitNewCourseCode) && tableName != "KhoaHoc")
+            {
+                if (HasColumn(tableName, "MaCSDT"))
+                    updates.Add($"UPDATE [{tempTable}] SET [MaCSDT_Cu] = [MaCSDT], [MaCSDT] = LEFT(@ExplicitMaKH, 5)");
+                if (HasColumn(tableName, "MaKH"))
+                    updates.Add($"UPDATE [{tempTable}] SET [MaKH_Cu] = ISNULL([MaKH_Cu],[MaKH]), [MaKH] = @ExplicitMaKH");
+                if (HasColumn(tableName, "MaKhoaHoc"))
+                    updates.Add($"UPDATE [{tempTable}] SET [MaKhoaHoc_Cu] = [MaKhoaHoc], [MaKhoaHoc] = @ExplicitMaKH");
+            }
+
             foreach (var sql in updates)
             {
                 using var cmd = new SqlCommand(sql, conn);
-                var csdtParam = _allocatedCsdt ?? _newCsdtCode;
+                var csdtParam = _newCsdtCode;
                 if (!string.IsNullOrEmpty(csdtParam))
                     cmd.Parameters.AddWithValue("@NewCsdtCode", csdtParam);
                 if (!string.IsNullOrEmpty(_explicitNewCourseCode))
@@ -405,7 +538,7 @@ public delegate void DbSyncProgressHandler(string message);
             }
     }
 
-    private static List<string> GetCsdtTransform(string tableName, string tempTable)
+    private List<string> GetCsdtTransform(string tableName, string tempTable)
     {
         var sql = new List<string>();
 
@@ -423,38 +556,68 @@ public delegate void DbSyncProgressHandler(string message);
         }
         if (HasColumn(tableName, "MaDK"))
         {
-            // For NguoiLX (học viên) we need to allocate a 6-digit sequence per NewCsdt
+            // For NguoiLX (học viên) we need to decide how to produce MaDK depending on mode:
+            // - If _allocateCsdt == true => TT17 mode: allocate new MaDK sequences NewCsdt-yyyymmdd-######
+            // - Else if _newCsdtCode provided => Replace mode: keep existing suffix (from first '-') but replace prefix with NewCsdt
+            // - Else (no change) => leave MaDK as-is and mapping of dependent tables will be handled elsewhere
             if (tableName == "NguoiLX")
             {
-                var sqlAlloc = $"""
-                    -- Allocate MaDK for NguoiLX: NewCsdt-yyyymmdd-###### (6-digit sequence), reset per day
-                    DECLARE @NewCsdt nvarchar(10) = @NewCsdtCode;
-                    DECLARE @res int;
-                    DECLARE @resName nvarchar(128) = N'GplxAllocateMaDK_' + @NewCsdt;
-                    EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000, @LockOwner='Session';
-                    IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp MaDK',16,1); RETURN; END;
-                    -- store old value
-                    UPDATE [{tempTable}] SET MaDK_Cu = MaDK;
-                    -- compute row number partitioned by ymd and determine existing max per ymd
-                    ;WITH t AS (
-                        SELECT *, ROW_NUMBER() OVER (PARTITION BY CONVERT(varchar(8), ISNULL(NgayTao, GETDATE()), 112) ORDER BY (SELECT 1)) AS rn,
-                               CONVERT(varchar(8), ISNULL(NgayTao, GETDATE()), 112) AS ymd
-                        FROM {tempTable}
-                    ), distinct_dates AS (
-                        SELECT DISTINCT CONVERT(varchar(8), ISNULL(NgayTao, GETDATE()), 112) AS ymd FROM {tempTable}
-                    ), mx AS (
-                        SELECT d.ymd, ISNULL(MAX(TRY_CONVERT(int, RIGHT(k.MaDK,6))),0) AS maxseq
-                        FROM distinct_dates d
-                        LEFT JOIN NguoiLX k ON LEFT(ISNULL(k.MaDK,''),5) = @NewCsdt AND SUBSTRING(k.MaDK, CHARINDEX('-', k.MaDK)+1, 8) = d.ymd
-                        GROUP BY d.ymd
-                    )
-                    UPDATE t
-                    SET MaDK = @NewCsdt + '-' + t.ymd + '-' + RIGHT('000000' + CAST((ISNULL(m.maxseq,0) + t.rn) AS varchar(6)),6)
-                    FROM t
-                    LEFT JOIN mx m ON m.ymd = t.ymd;
-                    EXEC sp_releaseapplock @Resource = @resName, @LockOwner='Session';
-                    """;
-                sql.Add(sqlAlloc);
+                if (_allocateCsdt)
+                {
+                    var sqlAlloc = $"""
+                        BEGIN TRY
+                            BEGIN TRAN;
+                            -- Allocate MaDK for NguoiLX: NewCsdt-yyyymmdd-###### (6-digit sequence), reset per day
+                            DECLARE @NewCsdt nvarchar(10) = @NewCsdtCode;
+                            DECLARE @res int;
+                            DECLARE @resName nvarchar(128) = N'GplxAllocateMaDK_' + @NewCsdt;
+                            EXEC @res = sp_getapplock @Resource = @resName, @LockMode='Exclusive', @LockTimeout=60000, @LockOwner='Session';
+                            IF @res < 0 BEGIN RAISERROR('Không lấy được khoá cấp MaDK',16,1); ROLLBACK TRAN; RETURN; END;
+                            -- store old value
+                            UPDATE [{tempTable}] SET MaDK_Cu = MaDK;
+                            -- compute row number partitioned by ymd and determine existing max per ymd
+                            ;WITH t AS (
+                                SELECT *, ROW_NUMBER() OVER (PARTITION BY CONVERT(varchar(8), ISNULL(NgayTao, GETDATE()), 112) ORDER BY (SELECT 1)) AS rn,
+                                       CONVERT(varchar(8), ISNULL(NgayTao, GETDATE()), 112) AS ymd
+                                FROM {tempTable}
+                            ), distinct_dates AS (
+                                SELECT DISTINCT CONVERT(varchar(8), ISNULL(NgayTao, GETDATE()), 112) AS ymd FROM {tempTable}
+                            ), mx AS (
+                                SELECT d.ymd, ISNULL(MAX(TRY_CONVERT(int, RIGHT(k.MaDK,6))),0) AS maxseq
+                                FROM distinct_dates d
+                                LEFT JOIN NguoiLX k ON LEFT(ISNULL(k.MaDK,''),5) = @NewCsdt AND SUBSTRING(k.MaDK, CHARINDEX('-', k.MaDK)+1, 8) = d.ymd
+                                GROUP BY d.ymd
+                            )
+                            UPDATE t
+                            SET MaDK = @NewCsdt + '-' + t.ymd + '-' + RIGHT('000000' + CAST((ISNULL(m.maxseq,0) + t.rn) AS varchar(6)),6)
+                            FROM t
+                            LEFT JOIN mx m ON m.ymd = t.ymd;
+                            EXEC sp_releaseapplock @Resource = @resName, @LockOwner='Session';
+                            COMMIT TRAN;
+                        END TRY
+                        BEGIN CATCH
+                            IF XACT_STATE() <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRAN;
+                            DECLARE @err nvarchar(4000) = ERROR_MESSAGE();
+                            RAISERROR(@err,16,1);
+                        END CATCH
+                        """;
+                    sql.Add(sqlAlloc);
+                }
+                else if (!string.IsNullOrEmpty(_newCsdtCode))
+                {
+                    // Replace prefix (first 5 chars / part before '-') of existing MaDK with new Csdt code,
+                    // keeping the remainder (including leading '-') when possible. If MaDK does not contain '-',
+                    // fall back to building a simple MaDK with date and sequence '000001'.
+                    var sqlReplace = $"""
+                        -- Replace MaDK prefix with new Csdt while preserving suffix after first '-'
+                        UPDATE [{tempTable}]
+                        SET MaDK_Cu = MaDK,
+                            MaDK = CASE WHEN CHARINDEX('-', ISNULL(MaDK,'')) > 0 THEN @NewCsdtCode + SUBSTRING(MaDK, CHARINDEX('-', MaDK), LEN(MaDK))
+                                        ELSE @NewCsdtCode + '-' + CONVERT(varchar(8), ISNULL(NgayTao, GETDATE()), 112) + '-000001' END;
+                        """;
+                    sql.Add(sqlReplace);
+                }
+                // else: no change to MaDK
             }
             else
             {
@@ -513,7 +676,10 @@ public delegate void DbSyncProgressHandler(string message);
         var names = new HashSet<string>(columns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
         var result = new List<string>();
 
-        if (!string.IsNullOrEmpty(_newCsdtCode))
+        // Add _Cu snapshot columns when either a new CSĐT is being applied OR the user provided an explicit
+        // new course code (explicitNewCourseCode). The explicitNewCourseCode case includes the "Giữ nguyên"
+        // mode where the user keeps the original code but still expects _Cu snapshots to be recorded.
+        if (!string.IsNullOrEmpty(_newCsdtCode) || !string.IsNullOrEmpty(_explicitNewCourseCode) || _captureCuAlways)
         {
             if (HasColumn(tableName, "MaCSDT") && names.Contains("MaCSDT")) result.Add("MaCSDT_Cu");
             if (HasColumn(tableName, "MaKH") && names.Contains("MaKH")) result.Add("MaKH_Cu");
@@ -521,7 +687,8 @@ public delegate void DbSyncProgressHandler(string message);
             if (HasColumn(tableName, "MaDK") && names.Contains("MaDK")) result.Add("MaDK_Cu");
         }
 
-        if (!string.IsNullOrEmpty(_newSoCode))
+        // MaSoGTVT_Cu should be created when a new Sở code is provided or when explicitNewCourseCode is present
+        if (!string.IsNullOrEmpty(_newSoCode) || !string.IsNullOrEmpty(_explicitNewCourseCode) || _captureCuAlways)
         {
             if (HasColumn(tableName, "MaSoGTVT") && names.Contains("MaSoGTVT")) result.Add("MaSoGTVT_Cu");
         }

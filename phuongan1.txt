@@ -1,0 +1,71 @@
+Phương án 1 - Thay thế mã CSĐT
+
+Mục tiêu
+- Khi chọn chế độ "Thay thế mã csdt": đổi phần tiền tố MaCSDT (5 ký tự) của các bảng liên quan,
+  đồng thời giữ cấu trúc MaKH/MaKhoaHoc/MaDK/MaSoGTVT đúng ràng buộc khóa ngoại.
+
+Tóm tắt cách thực hiện
+1. Chuẩn bị
+   - Người dùng cung cấp: MaCSĐT cũ (OldCsdt), MaCSĐT mới (NewCsdt), MaSở cũ/mới (OldSo/NewSo),
+     và mã khóa học nguồn (CourseCode). Người dùng có thể chỉnh mã khóa học đích (ExplicitMaKH)
+     trong textbox nếu muốn ghi đè toàn bộ MaKH.
+   - Tạo danh sách bảng cần đồng bộ (AllTableNames) và khóa chính / cột liên quan.
+
+2. Sao chép dữ liệu từ nguồn vào bảng tạm
+   - Với mỗi bảng T trong danh sách:
+     - Tạo bảng tạm toàn cột chung giữa nguồn và đích: ##Gplx_Sync_{T}_{GUID}
+     - Nếu bảng có cột MaCSDT/MaKH/MaKhoaHoc/MaDK/MaSoGTVT, thêm các cột _Cu tương ứng (ví dụ MaKH_Cu)
+     - Chạy SELECT từ nguồn vào bảng tạm. Nếu người dùng chỉ định CourseCode thì SELECT sẽ lọc
+       theo CourseCode (đọc từ nguồn) — Lưu ý: CourseCode để đọc luôn là mã nguồn được chọn.
+
+3. Transform mã (Thay thế MaCSDT)
+   - Nếu chế độ là "Thay thế mã csdt":
+     - Trong bảng tạm, lưu giá trị cũ: SET MaCSDT_Cu = MaCSDT;
+     - Gán MaCSDT = @NewCsdtCode (tham số truyền từ UI).
+     - Với những bảng có MaKH / MaKhoaHoc: cập nhật phần tiền tố MaKH/MaKhoaHoc bằng cách thay LEFT(...,5) = @NewCsdtCode
+       (ví dụ: MaKH = @NewCsdtCode + SUBSTRING(MaKH, 6, LEN(MaKH))).
+     - Nếu người dùng đã nhập explicitNewCourseCode (toàn bộ MaKH đích), ưu tiên gán trực tiếp:
+         SET MaKH_Cu = MaKH; SET MaKH = @ExplicitMaKH;
+         SET MaCSDT_Cu = MaCSDT; SET MaCSDT = LEFT(@ExplicitMaKH,5);
+         SET MaKhoaHoc_Cu = MaKhoaHoc; SET MaKhoaHoc = @ExplicitMaKH;
+     - Nếu có TenKH mới (newCourseName) thì gán TenKH = @NewCourseName cho bảng KhoaHoc (và bảng khác nếu cần).
+
+4. Cấp lại/điều chỉnh MaDK (nếu cần)
+   - Với bảng NguoiLX (học viên): MaDK có cấu trúc NewCsdt-yyyymmdd-######;
+     nếu đang thay đổi CSĐT, cần cấp lại dãy 6 chữ số theo NewCsdt và ngày (reset theo ngày).
+   - Thực hiện cấp MaDK nguyên tử bằng sp_getapplock + transaction để tránh trùng số.
+   - Nếu applock không khả dụng: có thể fallback (không nguyên tử) bằng SELECT MAX(...) + 1 trên bảng đích (cảnh báo concurrency).
+
+5. Bảo toàn ràng buộc khóa ngoại
+   - Vì các bảng phụ (BaoCaoI, NguoiLX_HoSo, ...) tham chiếu MaKH hoặc MaKhoaHoc,
+     sau khi transform cần đảm bảo các bảng tạm chứa cùng MaKH mới như KhoaHoc.
+   - Do đó, khi explicitNewCourseCode được cung cấp, cập nhật các cột MaKH/MaKhoaHoc/MaCSDT_ trên bảng tạm của các bảng phụ
+     để trỏ tới giá trị MaKH đích trước khi chèn vào đích.
+
+6. Chèn vào cơ sở dữ liệu đích
+   - Sau transform, thực hiện INSERT INTO Dest SELECT FROM Temp WHERE NOT EXISTS (trùng key)
+   - Dùng SET IDENTITY_INSERT ON/OFF nếu bảng có IDENTITY.
+   - Thứ tự chèn: các bảng tham chiếu không cần thứ tự cụ thể nếu khóa ngoại được duy trì để không vi phạm;
+     nhưng nếu vẫn gặp lỗi FK (ví dụ insert BaoCaoI trước KhoaHoc), có thể điều chỉnh:
+       - Chèn KhoaHoc trước các bảng tham chiếu (an toàn), hoặc
+       - Tạm tắt kiểm tra FK (không khuyến nghị), hoặc
+       - Chèn theo dependency graph (KhoaHoc → BaoCaoI/II, NguoiLX_HoSo → NguoiLX và các bảng liên quan).
+
+7. Ghi nhận giá trị cũ và phục hồi khi cần
+   - Các cột _Cu lưu giá trị cũ (MaKH_Cu, MaCSDT_Cu, ...) để phục vụ rollback hoặc so sánh sau này.
+
+8. Transaction & locking
+   - Các thao tác quan trọng (cấp số, cập nhật liên quan MaDK/MaKH) được thực hiện trong TRAN + sp_getapplock
+     để đảm bảo nguyên tử trên môi trường nhiều tiến trình.
+   - Nếu transaction bị lỗi, ROLLBACK và ném lỗi lên UI; có thể cấu hình fallback non-atomic với log cảnh báo.
+
+Lưu ý vận hành
+- Luôn chạy Preview để kiểm tra số bản ghi nguồn trước khi Execute.
+- Kiểm tra kỹ CourseCode (source) — Preview dùng mã nguồn; Execute dùng destCourseCode để chèn (nếu người dùng chỉnh).
+- Nếu thấy lỗi FK: kiểm tra nội dung bảng tạm (distinct MaKH) và kiểm tra KhoaHoc đã tồn tại trên đích.
+- Ghi log chi tiết cho SELECT SQL và param @CourseCode để debug.
+
+Kết luận ngắn
+- Thay thế mã CSĐT là thao tác thay phần tiền tố trong các mã tham chiếu. Cần đảm bảo transform được áp dụng nhất quán
+  trên tất cả bảng, cập nhật các cột _Cu để lưu trace, cấp lại MaDK nguyên tử khi cần, và đảm bảo KhoaHoc (parent) tồn tại
+  trước khi chèn các bảng con để tránh lỗi khóa ngoại.

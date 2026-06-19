@@ -41,7 +41,7 @@ src/
 ```bash
 scripts\run-wpf.bat
 ```
-Nhập thông tin kết nối, mã CSĐT cũ/mới, mã khóa học → Xem trước → Đồng bộ.
+Nhập thông tin kết nối, **mã CSĐT mới (bắt buộc)**, mã Sở mới, mã khóa học → Xem trước → Đồng bộ.
 
 ### App Sở
 ```bash
@@ -56,17 +56,21 @@ dotnet build src/Gplx.WpfApp -c Release
 dotnet build src/Gplx.SoApp -c Release
 ```
 
-Output tại `src/*/bin/Release/net48/`.
+Output tại `src/*/bin/Release/net48/`. App CSĐT build ra `Gplx.Csdt.Tool.exe`.
 
 ## Tính năng chính
 
 ### App CSĐT (Gplx.WpfApp)
 - Đồng bộ bảng bằng bulk copy với transform mã tự động theo TT 17
-- Hỗ trợ nhập mã CSĐT cũ → mới (thay đổi 5 ký tự đầu MaKH, MaDK)
+- **TT17 MaKH format**: `{NewCsdt}K{yy}{nnnn}` (5 ký tự CSĐT + 'K' + 2 số năm + 4 số thứ tự 0001-9999)
+- Hỗ trợ 3 chế độ tạo mã khóa học: **Chỉ thay thế mã CSĐT** / **Tạo mới theo TT17** / **Giữ nguyên**
+- `txtNewCsdt` là bắt buộc để sinh mã TT17
 - Hỗ trợ nhập mã Sở cũ → mới (thay đổi MaSoGTVT)
 - Lọc theo mã khóa học (chỉ đồng bộ dữ liệu liên quan đến khóa học đó)
 - Xem trước dữ liệu NguoiLX, BaoCaoI, BaoCaoII trước khi đồng bộ
 - Tự động thêm cột `_Cu` để lưu giá trị mã cũ
+- **Ảnh chân dung**: nhập đường dẫn ảnh cũ/mới (lưu trong settings)
+- Settings chỉ lưu khi TestConnection / Preview / Execute thành công
 
 ### App Sở (Gplx.SoApp)
 - Đồng bộ qua SQL scripts từ thư mục `docs/script_syn_so/`
@@ -99,7 +103,7 @@ Các cột được transform trên bảng tạm (`##Gplx_Sync_*`) trước khi 
 | Cột gốc | Công thức transform | Cột lưu giá trị cũ |
 |---|---|---|
 | `MaCSDT` | `@NewCsdtCode` | `MaCSDT_Cu` (varchar(6)) |
-| `MaKH` | `@NewCsdtCode + SUBSTRING([MaKH], 6, LEN([MaKH]))` | `MaKH_Cu` (varchar(13)) |
+| `MaKH` | **TT17**: `@NewCsdtCode + 'K' + @yy + @nnnn` \| **Replace**: `@NewCsdtCode + SUBSTRING([MaKH], 6, LEN([MaKH]))` | `MaKH_Cu` (varchar(13)) |
 | `MaKhoaHoc` | `@NewCsdtCode + SUBSTRING([MaKhoaHoc], 6, LEN([MaKhoaHoc]))` | `MaKhoaHoc_Cu` (varchar(13)) |
 | `MaDK` | `@NewCsdtCode + SUBSTRING([MaDK], 6, LEN([MaDK]))` | `MaDK_Cu` (varchar(25)) |
 | `MaSoGTVT` | `@NewSoCode` | `MaSoGTVT_Cu` (varchar(6)) |
@@ -114,3 +118,29 @@ Các cột `_Cu` tự động được thêm vào bảng đích bằng `ALTER TA
 4. Transform mã CSĐT / mã Sở trên bảng tạm
 5. `INSERT INTO … SELECT … WHERE NOT EXISTS` từ bảng tạm vào đích
 6. Drop bảng tạm
+
+## Thay đổi gần đây (2026-06-19)
+
+### TT17 Generation Rewrite
+- **MaKH format mới**: `{NewCsdt}K{yy}{nnnn}` (ví dụ: `ABCDEF26K0001`)
+- Query tìm max sequence: `WHERE LEFT(MaKH, @len)=@prefix AND LEN(MaKH)=@len+4 AND RIGHT(MaKH,4) LIKE '[0-9][0-9][0-9][0-9]'`
+- Hàm chính: `GenerateCourseSuffixAsync`, `UpdateNewCourseCodeAsync`, `ResolveNewCsdtForRun`
+
+### UI & UX
+- **RadioButtons** thay ComboBox cho 3 chế độ tạo mã
+- **Xoá** nút "Sinh mã", xoá `txtOldCsdt`, `txtOldSoCode`
+- **Bố cục 2 cột** GroupBox "Thông số chuyển đổi":
+  - Row 0: Mã khóa học / Mã mới & Tên mới
+  - Row 1: Mã CSĐT mới & Mã Sở mới / Quy tắc chuyển đổi (radios)
+  - Row 2: Ảnh chân dung cũ / Ảnh chân dung mới
+  - Row 3: Xem trước
+- `txtNewCourseCode`, `txtNewCourseName` **read-only**
+- Combo mã khóa học **SelectAll** khi focus
+- Label **"Quy tắc chuyển đổi mã khóa học, mã học viên"** trên nhóm radio
+- GroupBox content font **normal** (không bold)
+- Window `MinWidth=950` `MinHeight=550`
+
+### Code Cleanup
+- Xoá `AllocateCsdtAtomicAsync`, `_oldCsdt`, `_allocatedCsdt`, param `oldCsdt` khỏi `TableSyncEngine`
+- `SettingsData`: xoá `OldCsdt`/`OldSoCode`, thêm `OldPhotoPath`/`NewPhotoPath`
+- Assembly name: **`Gplx.Csdt.Tool`** → output `Gplx.Csdt.Tool.exe`

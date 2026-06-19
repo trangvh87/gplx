@@ -71,6 +71,7 @@ public partial class MainWindow : Window
         {
             _searchTimer.Stop();
             await SearchCourseCodesAsync(cmbCourseCode.Text.Trim());
+            await UpdateNewCourseCodeAsync();
         };
 
         // don't hook auto-save: settings are saved explicitly on user actions
@@ -98,14 +99,14 @@ public partial class MainWindow : Window
             DstUser = txtDstUser.Text,
             DstPass = pwdDstPass.Password,
             DstDb = txtDstDb.Text,
-            OldCsdt = txtOldCsdt.Text,
             NewCsdt = txtNewCsdt.Text,
-            OldSoCode = txtOldSoCode.Text,
             NewSoCode = txtNewSoCode.Text,
             CourseCode = GetCourseCode(),
             BatchSize = txtBatchSize.Text,
             CodeMode = GetSelectedCodeMode(),
             NewCourseName = txtNewCourseName.Text,
+            OldPhotoPath = txtOldPhotoPath.Text,
+            NewPhotoPath = txtNewPhotoPath.Text,
         };
         try
         {
@@ -131,25 +132,21 @@ public partial class MainWindow : Window
             txtDstUser.Text = data.DstUser;
             pwdDstPass.Password = data.DstPass;
             txtDstDb.Text = data.DstDb;
-            txtOldCsdt.Text = data.OldCsdt;
             txtNewCsdt.Text = data.NewCsdt;
-            txtOldSoCode.Text = data.OldSoCode;
             txtNewSoCode.Text = data.NewSoCode;
             cmbCourseCode.Text = data.CourseCode;
             txtBatchSize.Text = data.BatchSize;
             txtNewCourseName.Text = data.NewCourseName;
+            txtOldPhotoPath.Text = data.OldPhotoPath;
+            txtNewPhotoPath.Text = data.NewPhotoPath;
             // restore code mode
             try
             {
-                if (!string.IsNullOrEmpty(data.CodeMode) && cmbCodeMode != null)
+                if (!string.IsNullOrEmpty(data.CodeMode))
                 {
-                    for (int i = 0; i < cmbCodeMode.Items.Count; i++)
-                    {
-                        if (cmbCodeMode.Items[i] is ComboBoxItem it && (it.Content?.ToString() ?? "") == data.CodeMode)
-                        {
-                            cmbCodeMode.SelectedIndex = i; break;
-                        }
-                    }
+                    if (data.CodeMode == "Chỉ thay thế mã CSĐT") rbModeReplace.IsChecked = true;
+                    else if (data.CodeMode == "Tạo mới theo thông tư 17") rbModeTT17.IsChecked = true;
+                    else if (data.CodeMode == "Giữ nguyên") rbModeKeep.IsChecked = true;
                 }
             }
             catch { }
@@ -170,7 +167,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        var oldCsdt = txtOldCsdt.Text.Trim();
         var mode = GetSelectedCodeMode();
         // If TT17 selected, prefer generated NewCsdt and update the courseCode accordingly
         var newCsdt = (await ResolveNewCsdtForRun(GetCourseCode())) ?? txtNewCsdt.Text.Trim();
@@ -179,18 +175,16 @@ public partial class MainWindow : Window
             MessageBox.Show("Không thể sinh mã mới theo Thông tư 17.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        var oldSo = txtOldSoCode.Text.Trim();
         var newSo = txtNewSoCode.Text.Trim();
         // Determine which courseCode to use for querying preview data.
         // For preview we must always query the SOURCE DB using the original course (MaKH) selected
         // by the user. TT17 generation only affects what will be used for INSERT into destination,
         // but preview must show source rows tied to the selected MaKH.
         var courseCode = GetCourseCode();
-        if (string.IsNullOrEmpty(oldCsdt) || string.IsNullOrEmpty(newCsdt) ||
-            string.IsNullOrEmpty(oldSo) || string.IsNullOrEmpty(newSo) ||
+        if (string.IsNullOrEmpty(newCsdt) || string.IsNullOrEmpty(newSo) ||
             string.IsNullOrEmpty(courseCode))
         {
-            MessageBox.Show("Nhập đầy đủ mã CSĐT cũ/mới, mã Sở cũ/mới và mã khóa học.", "",
+            MessageBox.Show("Nhập đầy đủ mã CSĐT mới, mã Sở mới và mã khóa học.", "",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -282,70 +276,49 @@ public partial class MainWindow : Window
         var mode = GetSelectedCodeMode();
         if (mode == "Giữ nguyên")
         {
-            // show the same course code and name as new (no change) and allow edit
             var orig = courseCode ?? "";
             txtNewCourseCode.Text = orig;
-            // try to populate name from source KhoaHoc if present
             txtNewCourseName.Text = await FetchCourseNameFromSourceAsync(orig) ?? "";
             return;
         }
-        string? newCsdt;
-        if (mode == "Thay thế mã csdt")
-            newCsdt = txtNewCsdt.Text.Trim();
-        else
-            newCsdt = await ResolveNewCsdtForRun(courseCode);
-
-        if (!string.IsNullOrEmpty(newCsdt))
-        {
-            // If TT17 mode, generate a new course suffix (K + YY + NNNN) based on NgayTao and dest DB max + 1
-            string suffix;
-            if (mode == "Tạo mới theo thông tư 17")
-            {
-                var gen = await GenerateCourseSuffixAsync(newCsdt, courseCode);
-                var fallback = (!string.IsNullOrEmpty(courseCode) && courseCode.Length > 5) ? courseCode.Substring(5) : "";
-                suffix = !string.IsNullOrEmpty(gen) ? gen! : fallback;
-            }
-            else
-            {
-                if (!string.IsNullOrEmpty(courseCode) && courseCode.Length > 5)
-                    suffix = courseCode.Substring(5);
-                else
-                    suffix = "";
-            }
-            txtNewCourseCode.Text = $"{newCsdt}{suffix}";
-            // prefill course name from source (fallback to empty)
-            txtNewCourseName.Text = await FetchCourseNameFromSourceAsync(courseCode) ?? "";
-            _ = CheckCourseExistsOnDestAsync(newCsdt + suffix);
-        }
-        else
+        var newCsdt = txtNewCsdt.Text.Trim();
+        if (string.IsNullOrEmpty(newCsdt))
         {
             txtNewCourseCode.Text = "";
             txtNewCourseCode.ToolTip = null;
+            return;
         }
+        if (mode == "Tạo mới theo thông tư 17")
+        {
+            var gen = await GenerateCourseSuffixAsync(newCsdt, courseCode);
+            if (!string.IsNullOrEmpty(gen))
+            {
+                txtNewCourseCode.Text = gen;
+                txtNewCourseName.Text = await FetchCourseNameFromSourceAsync(courseCode) ?? "";
+                _ = CheckCourseExistsOnDestAsync(gen!);
+            }
+            else
+            {
+                txtNewCourseCode.Text = "";
+            }
+            return;
+        }
+        // Replace mode: keep old suffix after 5-char CSDT
+        var suffix = (!string.IsNullOrEmpty(courseCode) && courseCode.Length > 5) ? courseCode.Substring(5) : "";
+        txtNewCourseCode.Text = $"{newCsdt}{suffix}";
+        txtNewCourseName.Text = await FetchCourseNameFromSourceAsync(courseCode) ?? "";
+        _ = CheckCourseExistsOnDestAsync(newCsdt + suffix);
     }
 
-    private async void CmbCodeMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private void CmbCodeMode_SelectionChanged(object sender, RoutedEventArgs e)
     {
         // Always refresh the preview display
         _ = UpdateNewCourseCodeAsync();
 
-        // If user switched to TT17, try to auto-generate NewCsdt immediately
-        if (GetSelectedCodeMode() == "Tạo mới theo thông tư 17")
+        // TT17 mode requires user to enter txtNewCsdt
+        if (GetSelectedCodeMode() == "Tạo mới theo thông tư 17" && string.IsNullOrWhiteSpace(txtNewCsdt.Text))
         {
-            try
-            {
-                var generated = await ResolveNewCsdtForRun(GetCourseCode());
-                if (!string.IsNullOrEmpty(generated))
-                {
-                    txtNewCsdt.Text = generated;
-                    AppendLog($"  TT17: Mã CSĐT tự sinh: {generated}");
-                    await UpdateNewCourseCodeAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                AppendLog($"  LỖI: Sinh mã TT17 thất bại: {ex.Message}");
-            }
+            AppendLog("  TT17: Nhập mã CSĐT mới vào ô 'Mã CSĐT mới' để sinh mã khóa học.");
         }
     }
 
@@ -358,21 +331,17 @@ public partial class MainWindow : Window
             AppendLog("  Lưu ý: Chỉ sinh mã TT17 khi chọn 'Tạo mới theo thông tư 17'.");
             return;
         }
+        if (string.IsNullOrWhiteSpace(txtNewCsdt.Text))
+        {
+            AppendLog("  LỖI: Nhập mã CSĐT mới trước khi sinh mã TT17.");
+            return;
+        }
         _isBusy = true;
         Cursor = Cursors.Wait;
         try
         {
-            var code = await ResolveNewCsdtForRun(GetCourseCode());
-            if (!string.IsNullOrEmpty(code))
-            {
-                txtNewCsdt.Text = code;
-                AppendLog($"  TT17: Mã CSĐT sinh: {code}");
-                _ = UpdateNewCourseCodeAsync();
-            }
-            else
-            {
-                AppendLog("  LỖI: Không thể sinh mã TT17.");
-            }
+            await UpdateNewCourseCodeAsync();
+            AppendLog($"  TT17: Mã khóa học đề xuất: {txtNewCourseCode.Text}");
         }
         finally
         {
@@ -426,7 +395,7 @@ public partial class MainWindow : Window
         catch { return null; }
     }
 
-    // Generate course suffix for TT17: 'K' + YY + NNNN, where YY from NgayTao and NNNN is next sequence per NewCsdt+YY
+    // Generate full TT17 MaKH: {newCsdtBase}K{yy}{nnnn}
     private async Task<string?> GenerateCourseSuffixAsync(string? newCsdtBase, string? oldCourseCode)
     {
         try
@@ -439,13 +408,10 @@ public partial class MainWindow : Window
             await conn.OpenAsync();
 
             // Determine date to use: NgayTao from existing course if available, else today
-            string ymd = DateTime.UtcNow.ToString("yyyyMMdd");
-            string yy = DateTime.UtcNow.ToString("yy");
+            string yy = DateTime.Now.ToString("yy");
             DateTime? srcDate = null;
-            var oldCode = oldCourseCode ?? "";
-            if (!string.IsNullOrEmpty(oldCode))
+            if (!string.IsNullOrEmpty(oldCourseCode))
             {
-                // try to read NgayTao from source DB KhoaHoc where MaKH = oldCourseCode
                 try
                 {
                     var srcServer = txtSrcServer.Text.Trim();
@@ -456,28 +422,27 @@ public partial class MainWindow : Window
                         using var sc = new SqlConnection(srcConn);
                         await sc.OpenAsync();
                         using var cmd = new SqlCommand("SELECT TOP 1 NgayTao FROM KhoaHoc WHERE MaKH = @p", sc);
-                        cmd.Parameters.AddWithValue("@p", oldCode);
+                        cmd.Parameters.AddWithValue("@p", oldCourseCode);
                         var r = await cmd.ExecuteScalarAsync();
-                        if (r != DBNull.Value && r != null)
-                        {
-                            if (DateTime.TryParse(r.ToString(), out var dt)) srcDate = dt;
-                        }
+                        if (r != DBNull.Value && r != null && DateTime.TryParse(r.ToString(), out var dt))
+                            srcDate = dt;
                     }
                 }
                 catch { }
             }
-
             if (srcDate.HasValue)
-            {
-                ymd = srcDate.Value.ToString("yyyyMMdd");
                 yy = srcDate.Value.ToString("yy");
-            }
 
-            // Compute max existing sequence for this newCsdtBase and year-yy using MaKH pattern: LEFT(MaKH,5)=newCsdtBase AND SUBSTRING(MaKH,6,2)=yy
+            // Build prefix: newCsdtBase + 'K' + yy
+            var prefix = (newCsdtBase ?? "") + "K" + yy;
+            var prefixLen = prefix.Length;
+
+            // Find max existing 4-digit sequence WHERE MaKH starts with prefix and last 4 chars are digits
             using var cmdMax = new SqlCommand(
-                "SELECT ISNULL(MAX(TRY_CONVERT(int, RIGHT(MaKH,4))), 0) FROM KhoaHoc WHERE LEFT(ISNULL(MaKH,''),5) = @p AND SUBSTRING(ISNULL(MaKH,''),6,2) = @yy", conn);
-            cmdMax.Parameters.AddWithValue("@p", newCsdtBase ?? "");
-            cmdMax.Parameters.AddWithValue("@yy", yy);
+                "SELECT ISNULL(MAX(TRY_CONVERT(int, RIGHT(MaKH,4))),0) FROM KhoaHoc WHERE LEFT(ISNULL(MaKH,''),@len)=@prefix AND LEN(ISNULL(MaKH,''))=@len+4 AND RIGHT(MaKH,4) LIKE '[0-9][0-9][0-9][0-9]'",
+                conn);
+            cmdMax.Parameters.AddWithValue("@len", prefixLen);
+            cmdMax.Parameters.AddWithValue("@prefix", prefix);
             cmdMax.CommandTimeout = 10;
             var res = await cmdMax.ExecuteScalarAsync();
             int max = 0;
@@ -485,11 +450,11 @@ public partial class MainWindow : Window
             var next = max + 1;
             if (next > 9999) return null;
             var seq = next.ToString("D4");
-            return "K" + yy + seq;
+            return prefix + seq;
         }
         catch (Exception ex)
         {
-            AppendLog($"  LỖI: Sinh suffix khóa học TT17 thất bại: {ex.Message}");
+            AppendLog($"  LỖI: Sinh mã khóa học TT17 thất bại: {ex.Message}");
             return null;
         }
     }
@@ -542,6 +507,15 @@ public partial class MainWindow : Window
 
         _searchTimer.Stop();
         await SearchCourseCodesAsync(text);
+    }
+
+    private void CmbCourseCode_GotFocus(object sender, RoutedEventArgs e)
+    {
+        cmbCourseCode.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (cmbCourseCode.Template.FindName("PART_EditableTextBox", cmbCourseCode) is TextBox tb)
+                tb.SelectAll();
+        }), System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private async Task SearchCourseCodesAsync(string? search)
@@ -623,7 +597,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        var oldCsdt = txtOldCsdt.Text.Trim();
         var mode = GetSelectedCodeMode();
         var newCsdt = await ResolveNewCsdtForRun(GetCourseCode());
         if (mode == "Tạo mới theo thông tư 17" && string.IsNullOrEmpty(newCsdt))
@@ -631,17 +604,18 @@ public partial class MainWindow : Window
             MessageBox.Show("Không thể sinh mã mới theo Thông tư 17.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        var oldSo = txtOldSoCode.Text.Trim();
         var newSoCode = txtNewSoCode.Text.Trim();
-        // Use the user-editable new course code if present (the final code)
-        var courseCode = string.IsNullOrWhiteSpace(txtNewCourseCode.Text)
-            ? GetCourseCode()
+        // sourceCourseCode is the original MaKH selected by the user (used to read from source)
+        var sourceCourseCode = GetCourseCode();
+        // destCourseCode is the final MaKH to insert into destination; user can edit txtNewCourseCode
+        var destCourseCode = string.IsNullOrWhiteSpace(txtNewCourseCode.Text)
+            ? sourceCourseCode
             : txtNewCourseCode.Text.Trim();
-        if (string.IsNullOrEmpty(oldCsdt) || (GetSelectedCodeMode() == "Thay thế mã csdt" && string.IsNullOrEmpty(newCsdt)) ||
-            string.IsNullOrEmpty(oldSo) || string.IsNullOrEmpty(newSoCode) ||
-            string.IsNullOrEmpty(courseCode))
+        if ((GetSelectedCodeMode() == "Chỉ thay thế mã CSĐT" && string.IsNullOrEmpty(newCsdt)) ||
+            string.IsNullOrEmpty(newSoCode) ||
+            string.IsNullOrEmpty(sourceCourseCode))
         {
-            MessageBox.Show("Nhập đầy đủ mã CSĐT cũ/mới, mã Sở cũ/mới và mã khóa học.", "",
+            MessageBox.Show("Nhập đầy đủ mã CSĐT mới, mã Sở mới và mã khóa học.", "",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -650,10 +624,37 @@ public partial class MainWindow : Window
             pwdSrcPass.Password, srcDb);
         var dstConn = BuildConnString(dstServer, txtDstUser.Text.Trim(),
             pwdDstPass.Password, dstDb);
+
+        // Check whether the SOURCE course (old code) already exists in destination KhoaHoc
+        try
+        {
+            using var chkConn = new SqlConnection(dstConn);
+            await chkConn.OpenAsync();
+            // Check whether the source course code already appears in the destination as a previously-processed value
+            // We look at the MaKH_Cu snapshot column which stores the original source MaKH when a previous sync ran.
+            using var chkCmd = new SqlCommand("SELECT COUNT(*) FROM KhoaHoc WHERE MaKH_Cu = @p", chkConn);
+            chkCmd.Parameters.AddWithValue("@p", sourceCourseCode);
+            chkCmd.CommandTimeout = 10;
+            var exists = Convert.ToInt32(await chkCmd.ExecuteScalarAsync());
+            if (exists > 0)
+            {
+                // Log an error in red and stop further processing
+                AppendLog($"LỖI: Khóa học {sourceCourseCode} đã được thực hiện trước đó");
+                MessageBox.Show($"Khóa học {sourceCourseCode} đã được thực hiện trước đó, không thể thực hiện tiếp.", "Đã tồn tại", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"  Cảnh báo: không thể kiểm tra tồn tại KhoaHoc trên đích: {ex.Message}");
+            // continue — do not block sync if check fails, but inform the user
+        }
+
         // Save settings when the user initiates a DB sync
         try { SaveSettings(); } catch { }
         _lastDstConnStr = dstConn;
-        _lastNewCourseCode = courseCode;
+        // remember the destination (final) course code for the result viewer
+        _lastNewCourseCode = destCourseCode;
 
         var tables = AllTableNames.Select(name => new SyncTableConfig
         {
@@ -668,15 +669,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        var allocateCsdt = GetSelectedCodeMode() == "Tạo mới theo thông tư 17";
+        var selectedMode = GetSelectedCodeMode();
+        var allocateCsdt = selectedMode == "Tạo mới theo thông tư 17";
+        var captureCuAlways = selectedMode == "Giữ nguyên";
         var engine = new TableSyncEngine(srcConn, dstConn, tables, batchSize, 600,
             newCsdtCode: string.IsNullOrEmpty(newCsdt) ? null : newCsdt,
             newSoCode: string.IsNullOrEmpty(newSoCode) ? null : newSoCode,
-            courseCode: string.IsNullOrEmpty(courseCode) ? null : courseCode,
+            // pass the SOURCE course code to read rows from source DB
+            courseCode: string.IsNullOrEmpty(sourceCourseCode) ? null : sourceCourseCode,
             newCourseName: string.IsNullOrWhiteSpace(txtNewCourseName.Text) ? null : txtNewCourseName.Text.Trim(),
-            explicitNewCourseCode: string.IsNullOrWhiteSpace(txtNewCourseCode.Text) ? null : txtNewCourseCode.Text.Trim(),
+            // pass the DEST (final) course code so engine can apply it during transform
+            explicitNewCourseCode: string.IsNullOrWhiteSpace(destCourseCode) ? null : destCourseCode,
             allocateCsdt: allocateCsdt,
-            oldCsdt: txtOldCsdt.Text.Trim());
+            captureCuAlways: captureCuAlways);
         engine.OnProgress += m => AppendLog(m);
 
         SetDbUI(false);
@@ -690,8 +695,10 @@ public partial class MainWindow : Window
                 AppendLog($"  Mã CSĐT mới (đề xuất): {newCsdt}");
             if (!string.IsNullOrEmpty(newSoCode))
                 AppendLog($"  Mã Sở mới: {newSoCode}");
-            if (!string.IsNullOrEmpty(courseCode))
-                AppendLog($"  Khóa học: {courseCode}");
+            if (!string.IsNullOrEmpty(sourceCourseCode))
+                AppendLog($"  Khóa học (source): {sourceCourseCode}");
+            if (!string.IsNullOrEmpty(destCourseCode) && destCourseCode != sourceCourseCode)
+                AppendLog($"  Khóa học (dest): {destCourseCode}");
 
         try
         {
@@ -902,12 +909,12 @@ public partial class MainWindow : Window
         txtDstUser.IsEnabled = enabled;
         pwdDstPass.IsEnabled = enabled;
         txtDstDb.IsEnabled = enabled;
-        txtOldCsdt.IsEnabled = enabled;
         txtNewCsdt.IsEnabled = enabled;
-        txtOldSoCode.IsEnabled = enabled;
         txtNewSoCode.IsEnabled = enabled;
         cmbCourseCode.IsEnabled = enabled;
         txtBatchSize.IsEnabled = enabled;
+        txtOldPhotoPath.IsEnabled = enabled;
+        txtNewPhotoPath.IsEnabled = enabled;
         SetActionButtonsEnabled(enabled);
     }
 
@@ -921,79 +928,29 @@ public partial class MainWindow : Window
         public string DstUser { get; set; } = "";
         public string DstPass { get; set; } = "";
         public string DstDb { get; set; } = "";
-        public string OldCsdt { get; set; } = "";
         public string NewCsdt { get; set; } = "";
-        public string OldSoCode { get; set; } = "";
         public string NewSoCode { get; set; } = "";
         public string CourseCode { get; set; } = "";
         public string BatchSize { get; set; } = "50000";
-        public string CodeMode { get; set; } = "Thay thế mã csdt";
+        public string CodeMode { get; set; } = "Chỉ thay thế mã CSĐT";
         public string NewCourseName { get; set; } = "";
+        public string OldPhotoPath { get; set; } = "";
+        public string NewPhotoPath { get; set; } = "";
     }
 
-    private string GetSelectedCodeMode() => cmbCodeMode?.SelectedItem is ComboBoxItem it ? it.Content?.ToString() ?? "Thay thế mã csdt" : "Thay thế mã csdt";
+    private string GetSelectedCodeMode()
+    {
+        if (rbModeReplace.IsChecked == true) return "Chỉ thay thế mã CSĐT";
+        if (rbModeTT17.IsChecked == true) return "Tạo mới theo thông tư 17";
+        if (rbModeKeep.IsChecked == true) return "Giữ nguyên";
+        return "Chỉ thay thế mã CSĐT";
+    }
 
-    private async Task<string?> ResolveNewCsdtForRun(string courseCode)
+    private Task<string?> ResolveNewCsdtForRun(string courseCode)
     {
         var mode = GetSelectedCodeMode();
         if (mode == "Giữ nguyên")
-            return null; // don't change
-        if (mode == "Thay thế mã csdt")
-            return string.IsNullOrWhiteSpace(txtNewCsdt.Text) ? null : txtNewCsdt.Text.Trim();
-
-        // Tạo mới theo TT17: read TT17 doc to validate rules, then determine province and query destination DB
-        try
-        {
-            // Do not require an external TT17 file — generate defaults per TT17 rules.
-            var old = txtOldCsdt.Text.Trim();
-            if (old.Length < 2)
-            {
-                AppendLog("  LỖI: Mã CSĐT cũ không hợp lệ để sinh mã TT17.");
-                return null;
-            }
-            var province = old.Substring(0, 2);
-            // If user provided a new CSĐT explicitly, prefer that as base (must follow TT17 length 5)
-            var userNew = txtNewCsdt.Text.Trim();
-            if (!string.IsNullOrEmpty(userNew) && userNew.Length == 5)
-            {
-                return userNew;
-            }
-            var dstServer = txtDstServer.Text.Trim();
-            var dstDb = txtDstDb.Text.Trim();
-            // If destination connection not provided, fall back to default simple generator (province + 001)
-            if (string.IsNullOrEmpty(dstServer) || string.IsNullOrEmpty(dstDb))
-            {
-                var fallback = province + "001";
-                AppendLog($"  TT17: chưa có kết nối đích, dùng mã mặc định: {fallback}");
-                return fallback;
-            }
-            var connStr = BuildConnString(dstServer, txtDstUser.Text.Trim(), pwdDstPass.Password, dstDb);
-            using var conn = new SqlConnection(connStr);
-            await conn.OpenAsync();
-            // Find max 3-digit sequence for MaCSDT with this province prefix
-            var sql = "SELECT MAX(TRY_CONVERT(int, SUBSTRING(MaCSDT,3,3))) FROM KhoaHoc WHERE LEFT(ISNULL(MaCSDT,''),2) = @p AND LEN(ISNULL(MaCSDT,'')) = 5";
-            using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@p", province);
-            cmd.CommandTimeout = 10;
-            var res = await cmd.ExecuteScalarAsync();
-            int max = 0;
-            if (res != DBNull.Value && res != null)
-            {
-                try { max = Convert.ToInt32(res); } catch { max = 0; }
-            }
-            var next = max + 1;
-            if (next > 999)
-            {
-                AppendLog($"  LỖI: Không thể cấp mã mới TT17 cho tỉnh {province}: vượt quá 999.");
-                return null;
-            }
-            var seq = next.ToString("D3");
-            return province + seq;
-        }
-        catch (Exception ex)
-        {
-            AppendLog($"  LỖI: Khi sinh mã TT17: {ex.Message}");
-            return null;
-        }
+            return Task.FromResult<string?>(null);
+        return Task.FromResult<string?>(string.IsNullOrWhiteSpace(txtNewCsdt.Text) ? null : txtNewCsdt.Text.Trim());
     }
 }
