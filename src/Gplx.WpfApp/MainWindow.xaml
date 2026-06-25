@@ -1,7 +1,7 @@
 ﻿<Window x:Class="Gplx.WpfApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Công cụ hỗ trợ chuyển đổi dữ liệu-CSĐT" Width="960" Height="740" MinWidth="950" MinHeight="550"
+        Title="Công cụ hỗ trợ chuyển đổi dữ liệu-CSĐT" Width="1160" Height="740" MinWidth="1150" MinHeight="550"
         WindowStartupLocation="CenterScreen" ResizeMode="CanResize">
     <Window.Resources>
         <Style TargetType="GroupBox">
@@ -212,71 +212,61 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>  <!-- Label 1 -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Input 1 -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Label 2 -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Input 2 -->
+                    <ColumnDefinition Width="*"/>     <!-- Stretch -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Exist link -->
                 </Grid.ColumnDefinitions>
 
-                <!-- Row 0, Col 0: Mã khóa học -->
-                <Grid Grid.Row="0" Grid.Column="0" Margin="4,2" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Style="{StaticResource FieldLabel}">
-                        <TextBlock>Mã khóa học:<Run Foreground="Red" Text="*"/></TextBlock>
-                    </Label>
-                    <ComboBox Grid.Column="1" x:Name="cmbCourseCode" MinWidth="200"
-                              IsEditable="True" StaysOpenOnEdit="True" IsTextSearchEnabled="False"
-                              Style="{StaticResource InputCombo}"
-                              KeyUp="CmbCourseCode_KeyUp"
-                              SelectionChanged="CmbCourseCode_SelectionChanged"
-                              DropDownOpened="CmbCourseCode_DropDownOpened"
-                              GotFocus="CmbCourseCode_GotFocus"/>
-                </Grid>
-
-                <!-- Row 0, Col 1: Mã mới, Tên mới -->
-                <Grid Grid.Row="0" Grid.Column="1" Margin="4,2" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Style="{StaticResource FieldLabel}" Content="Mã mới:" Margin="4,4,2,2"/>
-                    <TextBox Grid.Column="1" x:Name="txtNewCourseCode" FontSize="12" Foreground="#0078D4" FontWeight="SemiBold" Style="{StaticResource InputBox}" IsReadOnly="True"/>
-                    <TextBox Grid.Column="2" x:Name="txtNewCourseName" FontSize="11" Foreground="#666666" Style="{StaticResource InputBox}" HorizontalAlignment="Stretch" IsReadOnly="True"/>
-                    <TextBlock Grid.Column="3" x:Name="txtExistLink" Visibility="Collapsed" Margin="4,0,0,0"
+                <!-- Row 0: Mã khóa học | Mã mới - Tên mới (inline) -->
+                <Label Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Margin="4,2">
+                    <TextBlock>Mã khóa học:<Run Foreground="Red" Text="*"/></TextBlock>
+                </Label>
+                <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbCourseCode" MinWidth="300"
+                          IsEditable="True" StaysOpenOnEdit="True" IsTextSearchEnabled="False"
+                          Style="{StaticResource InputCombo}"
+                          KeyUp="CmbCourseCode_KeyUp"
+                          SelectionChanged="CmbCourseCode_SelectionChanged"
+                          DropDownOpened="CmbCourseCode_DropDownOpened"
+                          GotFocus="CmbCourseCode_GotFocus"
+                          HorizontalAlignment="Left" Margin="2"/>
+                <Label Grid.Row="0" Grid.Column="2" Style="{StaticResource FieldLabel}" Margin="16,2,2,2">
+                    <TextBlock>Mã mới:</TextBlock>
+                </Label>
+                <StackPanel Grid.Row="0" Grid.Column="3" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,2,0,2">
+                    
+                    <TextBox x:Name="txtNewCourseCode" Width="120"  
+                             FontSize="12" Foreground="#0078D4" FontWeight="SemiBold" Style="{StaticResource InputBox}" IsReadOnly="True" Margin="0,0,4,0"/>
+                    <TextBlock Text="-" VerticalAlignment="Center" Margin="4,0" Foreground="#888"/>
+                    <TextBox x:Name="txtNewCourseName" Width="300"
+                             FontSize="11" Foreground="#666666" Style="{StaticResource InputBox}" IsReadOnly="True" Margin="4,0,0,0"/>
+                    <TextBlock x:Name="txtExistLink" Visibility="Collapsed" Margin="8,0,0,0"
                                VerticalAlignment="Center" FontSize="11" Cursor="Hand">
                         <Hyperlink x:Name="lnkExist" RequestNavigate="LnkExist_RequestNavigate"
                                    NavigateUri="about:blank">
                             <Run Text="đã tồn tại"/>
                         </Hyperlink>
                     </TextBlock>
-                </Grid>
+                </StackPanel>
 
-                <!-- Row 1, Col 0: Mã CSĐT mới, Mã Sở mới -->
-                <Grid Grid.Row="1" Grid.Column="0" Margin="4,2" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="120"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="120"/>
-                    </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Style="{StaticResource FieldLabel}">
-                        <TextBlock>Mã CSĐT mới:<Run Foreground="Red" Text="*"/></TextBlock>
-                    </Label>
-                    <TextBox Grid.Column="1" x:Name="txtNewCsdt" Style="{StaticResource InputBox}"/>
-                    <Label Grid.Column="2" Style="{StaticResource FieldLabel}">
-                        <TextBlock>Mã Sở mới:<Run Foreground="Red" Text="*"/></TextBlock>
-                    </Label>
-                    <TextBox Grid.Column="3" x:Name="txtNewSoCode" Style="{StaticResource InputBox}"/>
-                </Grid>
+                <!-- Row 1: Mã CSĐT mới | Mã Sở mới | Quy tắc chuyển đổi -->
+                <Label Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Margin="4,2">
+                    <TextBlock>Mã CSĐT mới:<Run Foreground="Red" Text="*"/></TextBlock>
+                </Label>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtNewCsdt" Width="120" Height="26" Style="{StaticResource InputBox}" HorizontalAlignment="Left" Margin="2"/>
 
-                <!-- Row 1, Col 1: Kiểu tạo mã -->
-                <StackPanel Grid.Row="1" Grid.Column="1" Margin="4,2" VerticalAlignment="Center" TextElement.FontWeight="Normal">
-                    <TextBlock Text="Quy tắc chuyển đổi mã khóa học, mã học viên" Margin="2,0,0,4" />
+                <Label Grid.Row="1" Grid.Column="2" Style="{StaticResource FieldLabel}" Margin="16,2,2,2">
+                    <TextBlock>Mã Sở mới:<Run Foreground="Red" Text="*"/></TextBlock>
+                </Label>
+                <TextBox Grid.Row="1" Grid.Column="3" x:Name="txtNewSoCode" Width="120" Height="26" Style="{StaticResource InputBox}" HorizontalAlignment="Left" Margin="2"/>
+
+                <StackPanel Grid.Row="1" Grid.Column="4" Margin="16,2" VerticalAlignment="Center" TextElement.FontWeight="Normal">
+                    <TextBlock Text="Quy tắc chuyển đổi mã khóa học, mã học viên" Margin="0,0,0,4" />
                     <WrapPanel>
                         <RadioButton x:Name="rbModeReplace" GroupName="CodeMode" Content="Chỉ thay thế mã CSĐT" IsChecked="True" Checked="CmbCodeMode_SelectionChanged" Margin="0,0,12,0"/>
                         <RadioButton x:Name="rbModeTT17" GroupName="CodeMode" Content="Tạo mới theo TT17" Checked="CmbCodeMode_SelectionChanged" Margin="0,0,12,0"/>
@@ -284,29 +274,21 @@
                     </WrapPanel>
                 </StackPanel>
 
-                <!-- Row 2, Col 0: Ảnh chân dung cũ -->
-                <Grid Grid.Row="2" Grid.Column="0" Margin="4,2" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Style="{StaticResource FieldLabel}" Content="Ảnh chân dung cũ:" Margin="4,4,2,2"/>
-                    <TextBox Grid.Column="1" x:Name="txtOldPhotoPath" Style="{StaticResource InputBox}"/>
-                </Grid>
+                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="6" Orientation="Horizontal" Margin="4,4,0,2" VerticalAlignment="Center">
+                    <CheckBox x:Name="chkUpdatePhotos" Content="Cập nhật ảnh hồ sơ" Checked="ChkUpdatePhotos_Checked" Unchecked="ChkUpdatePhotos_Unchecked" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="(Bắt buộc 2 đường dẫn khi tích chọn)" Foreground="#666" FontSize="11" VerticalAlignment="Center"/>
+                </StackPanel>
 
-                <!-- Row 2, Col 1: Ảnh chân dung mới -->
-                <Grid Grid.Row="2" Grid.Column="1" Margin="4,2" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Style="{StaticResource FieldLabel}" Content="Ảnh chân dung mới:" Margin="4,4,2,2"/>
-                    <TextBox Grid.Column="1" x:Name="txtNewPhotoPath" Style="{StaticResource InputBox}"/>
-                </Grid>
+                <!-- Row 3: Đường dẫn ảnh cũ | Đường dẫn ảnh mới -->
+                <Label Grid.Row="3" Grid.Column="0" Style="{StaticResource FieldLabel}" Content="Đường dẫn ảnh cũ:" Margin="4,2"/>
+                <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" x:Name="txtOldPhotoPath" Width="300" Style="{StaticResource InputBox}" HorizontalAlignment="Left" Margin="2" IsEnabled="False"/>
 
-                <!-- Row 3: Preview button -->
-                <Button Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" HorizontalAlignment="Right"
-                        x:Name="btnPreview" Style="{StaticResource PrimaryButton}" Click="BtnPreview_Click" Margin="0,2,4,2">
+                <Label Grid.Row="3" Grid.Column="2" Style="{StaticResource FieldLabel}" Content="Đường dẫn ảnh mới:" Margin="16,2,2,2"/>
+                <TextBox Grid.Row="3" Grid.Column="3" Grid.ColumnSpan="2" x:Name="txtNewPhotoPath" Width="300" Style="{StaticResource InputBox}" HorizontalAlignment="Left" Margin="2" IsEnabled="False"/>
+
+                <!-- Row 4: Preview button -->
+                <Button Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="6" HorizontalAlignment="Right"
+                        x:Name="btnPreview" Style="{StaticResource PrimaryButton}" Click="BtnPreview_Click" Margin="0,8,4,2">
                     <StackPanel Orientation="Horizontal">
                         <Path Data="M12,4.5 C7,4.5 2.73,7.61 1,12 C2.73,16.39 7,19.5 12,19.5 C17,19.5 21.27,16.39 23,12 C21.27,7.61 17,4.5 12,4.5 Z M12,17 C9.24,17 7,14.76 7,12 C7,9.24 9.24,7 12,7 C14.76,7 17,9.24 17,12 C17,14.76 14.76,17 12,17 Z M12,9 C10.34,9 9,10.34 9,12 C9,13.66 10.34,15 12,15 C13.66,15 15,13.66 15,12 C15,10.34 13.66,9 12,9 Z"
                               Fill="White" Stretch="Uniform" Width="14" Height="14" Margin="0,0,4,0"/>

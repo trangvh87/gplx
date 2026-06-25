@@ -23,6 +23,8 @@ public delegate void DbSyncProgressHandler(string message);
     private readonly string? _courseCode;
     private readonly string? _newCourseName;
     private readonly string? _explicitNewCourseCode;
+    private readonly string? _oldPhotoPath;
+    private readonly string? _newPhotoPath;
     private readonly string _runId = Guid.NewGuid().ToString("N");
     private readonly bool _allocateCsdt;
     private readonly bool _captureCuAlways;
@@ -37,7 +39,9 @@ public delegate void DbSyncProgressHandler(string message);
         string? newSoCode = null,
         string? courseCode = null,
         string? newCourseName = null,
-        string? explicitNewCourseCode = null)
+        string? explicitNewCourseCode = null,
+        string? oldPhotoPath = null,
+        string? newPhotoPath = null)
     {
         _sourceConn = sourceConn;
         _destConn = destConn;
@@ -49,6 +53,8 @@ public delegate void DbSyncProgressHandler(string message);
         _courseCode = courseCode;
         _newCourseName = newCourseName;
         _explicitNewCourseCode = explicitNewCourseCode;
+        _oldPhotoPath = oldPhotoPath;
+        _newPhotoPath = newPhotoPath;
         _allocateCsdt = false;
         _captureCuAlways = false;
     }
@@ -62,8 +68,10 @@ public delegate void DbSyncProgressHandler(string message);
         string? courseCode = null,
         string? newCourseName = null,
         string? explicitNewCourseCode = null,
+        string? oldPhotoPath = null,
+        string? newPhotoPath = null,
         bool allocateCsdt = false)
-        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName, explicitNewCourseCode)
+        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName, explicitNewCourseCode, oldPhotoPath, newPhotoPath)
     {
         _allocateCsdt = allocateCsdt;
         _captureCuAlways = false;
@@ -78,9 +86,11 @@ public delegate void DbSyncProgressHandler(string message);
         string? courseCode = null,
         string? newCourseName = null,
         string? explicitNewCourseCode = null,
+        string? oldPhotoPath = null,
+        string? newPhotoPath = null,
         bool allocateCsdt = false,
         bool captureCuAlways = false)
-        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName, explicitNewCourseCode, allocateCsdt)
+        : this(sourceConn, destConn, tables, batchSize, commandTimeout, newCsdtCode, newSoCode, courseCode, newCourseName, explicitNewCourseCode, oldPhotoPath, newPhotoPath, allocateCsdt)
     {
         _captureCuAlways = captureCuAlways;
     }
@@ -520,6 +530,12 @@ public delegate void DbSyncProgressHandler(string message);
                     updates.Add($"UPDATE [{tempTable}] SET [MaKhoaHoc_Cu] = [MaKhoaHoc], [MaKhoaHoc] = @ExplicitMaKH");
             }
 
+            // Photo path transform for NguoiLX_HoSo
+            if (!string.IsNullOrEmpty(_oldPhotoPath) && !string.IsNullOrEmpty(_newPhotoPath))
+            {
+                updates.AddRange(GetPhotoPathTransform(tableName, tempTable));
+            }
+
             foreach (var sql in updates)
             {
                 using var cmd = new SqlCommand(sql, conn);
@@ -533,6 +549,8 @@ public delegate void DbSyncProgressHandler(string message);
                 // pass new course name if available
                 if (!string.IsNullOrEmpty(_newCourseName))
                     cmd.Parameters.AddWithValue("@NewCourseName", _newCourseName);
+                if (!string.IsNullOrEmpty(_newPhotoPath))
+                    cmd.Parameters.AddWithValue("@NewPhotoPath", _newPhotoPath);
                 cmd.CommandTimeout = _commandTimeout;
                 await cmd.ExecuteNonQueryAsync();
             }
@@ -645,6 +663,29 @@ public delegate void DbSyncProgressHandler(string message);
         {
             $"UPDATE [{tempTable}] SET [MaSoGTVT_Cu] = [MaSoGTVT], [MaSoGTVT] = @NewSoCode"
         };
+    }
+
+    private List<string> GetPhotoPathTransform(string tableName, string tempTable)
+    {
+        if (tableName != "NguoiLX_HoSo" || string.IsNullOrEmpty(_oldPhotoPath) || string.IsNullOrEmpty(_newPhotoPath))
+            return new List<string>();
+
+        // The new photo path structure: [NewPhotoPath]\[MaKhoaHoc]\[MaDK].[extension]
+        // NguoiLX_HoSo uses MaKhoaHoc, not MaKH
+        
+        var sql = $"""
+            -- Update DuongDanAnh to new path structure: [NewPhotoPath]\[MaKhoaHoc]\[MaDK].[ext]
+            -- Extract extension from old DuongDanAnh
+            UPDATE [{tempTable}]
+            SET DuongDanAnh = @NewPhotoPath + '\' + [MaKhoaHoc] + '\' + [MaDK] + '.' + 
+                CASE 
+                    WHEN CHARINDEX('.', REVERSE(ISNULL(DuongDanAnh,''))) > 0 
+                    THEN REVERSE(SUBSTRING(REVERSE(DuongDanAnh), 1, CHARINDEX('.', REVERSE(DuongDanAnh)) - 1))
+                    ELSE 'jp2' END
+            WHERE DuongDanAnh IS NOT NULL AND DuongDanAnh <> '';
+            """;
+
+        return new List<string> { sql };
     }
 
     private static bool HasColumn(string tableName, string columnName)

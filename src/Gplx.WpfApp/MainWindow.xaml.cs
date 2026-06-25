@@ -34,7 +34,9 @@ public partial class MainWindow : Window
         ["NguoiLX_HoSo"] = new List<string> { "MaDK" },
         ["NguoiLXHS_GiayTo"] = new List<string> { "MaGT", "MaDK" },
         ["NguoiLX_GPLX"] = new List<string> { "MaDK" },
-        ["XeTap"] = new List<string> { "BienSoXe" }
+        ["XeTap"] = new List<string> { "BienSoXe" },
+        ["KhoaHoc_GiaoVien"] = new List<string> { "MaKH", "MaGV", "BienSoXe", "LoaiGV" },
+        ["KhoaHoc_XeTap"] = new List<string> { "MaKH", "BienSoXe", "MaGV" }
     };
 
     private static readonly string[] AllTableNames =
@@ -42,7 +44,8 @@ public partial class MainWindow : Window
         "DM_DonViGTVT", "DM_DVHC", "DM_HangDT", "KhoaHoc",
         "BaoCaoI", "BaoCaoII", "GiaoVien", "LichHoc",
         "NguoiLX", "NguoiLX_HoSo", "NguoiLXHS_GiayTo",
-        "NguoiLX_GPLX", "XeTap"
+        "NguoiLX_GPLX", "XeTap",
+        "KhoaHoc_GiaoVien"
     };
 
     private readonly DispatcherTimer _searchTimer = new()
@@ -107,6 +110,7 @@ public partial class MainWindow : Window
             NewCourseName = txtNewCourseName.Text,
             OldPhotoPath = txtOldPhotoPath.Text,
             NewPhotoPath = txtNewPhotoPath.Text,
+            UpdatePhotos = chkUpdatePhotos.IsChecked == true,
         };
         try
         {
@@ -139,6 +143,8 @@ public partial class MainWindow : Window
             txtNewCourseName.Text = data.NewCourseName;
             txtOldPhotoPath.Text = data.OldPhotoPath;
             txtNewPhotoPath.Text = data.NewPhotoPath;
+            chkUpdatePhotos.IsChecked = data.UpdatePhotos;
+            UpdatePhotoFieldsEnabled();
             // restore code mode
             try
             {
@@ -187,6 +193,17 @@ public partial class MainWindow : Window
             MessageBox.Show("Nhập đầy đủ mã CSĐT mới, mã Sở mới và mã khóa học.", "",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
+        }
+
+        // Validate photo paths if update photos is checked
+        if (chkUpdatePhotos.IsChecked == true)
+        {
+            if (string.IsNullOrWhiteSpace(txtOldPhotoPath.Text) || string.IsNullOrWhiteSpace(txtNewPhotoPath.Text))
+            {
+                MessageBox.Show("Khi chọn cập nhật ảnh hồ sơ, phải nhập đầy đủ đường dẫn ảnh cũ và ảnh mới.", "",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
         }
 
         _isBusy = true;
@@ -620,6 +637,17 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Validate photo paths if update photos is checked
+        if (chkUpdatePhotos.IsChecked == true)
+        {
+            if (string.IsNullOrWhiteSpace(txtOldPhotoPath.Text) || string.IsNullOrWhiteSpace(txtNewPhotoPath.Text))
+            {
+                MessageBox.Show("Khi chọn cập nhật ảnh hồ sơ, phải nhập đầy đủ đường dẫn ảnh cũ và ảnh mới.", "",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
+
         var srcConn = BuildConnString(srcServer, txtSrcUser.Text.Trim(),
             pwdSrcPass.Password, srcDb);
         var dstConn = BuildConnString(dstServer, txtDstUser.Text.Trim(),
@@ -680,6 +708,8 @@ public partial class MainWindow : Window
             newCourseName: string.IsNullOrWhiteSpace(txtNewCourseName.Text) ? null : txtNewCourseName.Text.Trim(),
             // pass the DEST (final) course code so engine can apply it during transform
             explicitNewCourseCode: string.IsNullOrWhiteSpace(destCourseCode) ? null : destCourseCode,
+            oldPhotoPath: chkUpdatePhotos.IsChecked == true ? txtOldPhotoPath.Text.Trim() : null,
+            newPhotoPath: chkUpdatePhotos.IsChecked == true ? txtNewPhotoPath.Text.Trim() : null,
             allocateCsdt: allocateCsdt,
             captureCuAlways: captureCuAlways);
         engine.OnProgress += m => AppendLog(m);
@@ -703,10 +733,44 @@ public partial class MainWindow : Window
         try
         {
             var results = await engine.RunAllAsync();
-            sw.Stop();
-            progressBar.Visibility = Visibility.Collapsed;
             var ok = results.Count(r => r.Success);
             var failCount = results.Count(r => !r.Success);
+
+            // Post-sync: generate KhoaHoc_XeTap from dest KhoaHoc_GiaoVien JOIN XeTap
+            if (failCount == 0)
+            {
+                try
+                {
+                    AppendLog("--- KhoaHoc_XeTap (sinh từ KhoaHoc_GiaoVien + XeTap) ---");
+                    using var postConn = new SqlConnection(dstConn);
+                    await postConn.OpenAsync();
+                    var genSql = $"""
+                        INSERT INTO [dbo].[KhoaHoc_XeTap] ([MaKH], [BienSoXe], [MaGV], [TenGV], [GhiChu], [TrangThai],
+                            [NguoiTao], [NguoiSua], [NgayTao], [NgaySua], [NgayBD], [NgayKT], [IsKhoaHocXeTap])
+                        SELECT S.[MaKH], S.[BienSoXe], S.[MaGV], S.[TenGV], S.[GhiChu], S.[TrangThai],
+                            S.[NguoiTao], S.[NguoiSua], S.[NgayTao], S.[NgaySua], S.[NgayBD], S.[NgayKT], 0
+                        FROM [dbo].[KhoaHoc_GiaoVien] S
+                        INNER JOIN [dbo].[XeTap] X ON X.[BienSoXe] = S.[BienSoXe]
+                        WHERE S.[BienSoXe] IS NOT NULL AND S.[BienSoXe] <> ''
+                          AND NOT EXISTS (
+                            SELECT 1 FROM [dbo].[KhoaHoc_XeTap] T
+                            WHERE T.[MaKH] = S.[MaKH] AND T.[BienSoXe] = S.[BienSoXe]
+                              AND ISNULL(T.[MaGV], '') = ISNULL(S.[MaGV], '')
+                          );
+                        """;
+                    using var genCmd = new SqlCommand(genSql, postConn);
+                    genCmd.CommandTimeout = 600;
+                    var genCount = await genCmd.ExecuteNonQueryAsync();
+                    AppendLog($"  +{genCount} bản ghi mới từ KhoaHoc_GiaoVien");
+                }
+                catch (Exception exGen)
+                {
+                    AppendLog($"  LỖI sinh KhoaHoc_XeTap: {exGen.Message}");
+                }
+            }
+
+            sw.Stop();
+            progressBar.Visibility = Visibility.Collapsed;
             var hvResult = results.FirstOrDefault(r => r.TableName.Contains("NguoiLX"));
             var hvInserted = hvResult?.InsertedCount ?? 0;
             AppendSyncCompleteMessage(hvInserted, failCount, sw.Elapsed.TotalSeconds, ok, results.Count);
@@ -913,9 +977,25 @@ public partial class MainWindow : Window
         txtNewSoCode.IsEnabled = enabled;
         cmbCourseCode.IsEnabled = enabled;
         txtBatchSize.IsEnabled = enabled;
+        UpdatePhotoFieldsEnabled();
+        SetActionButtonsEnabled(enabled);
+    }
+
+    private void UpdatePhotoFieldsEnabled()
+    {
+        bool enabled = chkUpdatePhotos.IsChecked == true;
         txtOldPhotoPath.IsEnabled = enabled;
         txtNewPhotoPath.IsEnabled = enabled;
-        SetActionButtonsEnabled(enabled);
+    }
+
+    private void ChkUpdatePhotos_Checked(object sender, RoutedEventArgs e)
+    {
+        UpdatePhotoFieldsEnabled();
+    }
+
+    private void ChkUpdatePhotos_Unchecked(object sender, RoutedEventArgs e)
+    {
+        UpdatePhotoFieldsEnabled();
     }
 
     private sealed class SettingsData
@@ -936,6 +1016,7 @@ public partial class MainWindow : Window
         public string NewCourseName { get; set; } = "";
         public string OldPhotoPath { get; set; } = "";
         public string NewPhotoPath { get; set; } = "";
+        public bool UpdatePhotos { get; set; } = false;
     }
 
     private string GetSelectedCodeMode()

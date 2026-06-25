@@ -1,8 +1,132 @@
 <Window x:Class="Gplx.SoApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Gplx - Đồng bộ Sở" Width="920" Height="720"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+        Title="Gplx - Đồng bộ Sở" Width="1160" Height="740" MinWidth="900" MinHeight="550"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResize">
+    <Window.Resources>
+        <Style TargetType="GroupBox">
+            <Setter Property="Padding" Value="6"/>
+            <Setter Property="Margin" Value="0,4"/>
+            <Setter Property="BorderBrush" Value="#D0D0D0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="Label">
+            <Setter Property="Margin" Value="2,4,4,2"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="InputBox" TargetType="TextBox">
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="BorderBrush" Value="#B0B0B0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="#0078D4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#106EBE"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#005A9E"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#CCCCCC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SmallButton" TargetType="Button">
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#B0B0B0"/>
+            <Setter Property="Background" Value="#F0F0F0"/>
+            <Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#E0E0E0"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#D0D0D0"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#F5F5F5"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#DDDDDD"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ConnLabel" TargetType="Label" BasedOn="{StaticResource FieldLabel}">
+            <Setter Property="Width" Value="70"/>
+        </Style>
+        <Style x:Key="TabHeader" TargetType="TabItem">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="12,4"/>
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="True"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="CanUserSortColumns" Value="True"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="RowHeaderWidth" Value="0"/>
+            <Setter Property="AlternatingRowBackground" Value="#F5F9FF"/>
+            <Setter Property="BorderBrush" Value="#D0D0D0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style x:Key="LogBox" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="#00FF88"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="BorderBrush" Value="#333333"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4,2"/>
+        </Style>
+        <Style x:Key="StatusBarStyle" TargetType="Border">
+            <Setter Property="Background" Value="#0078D4"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="CornerRadius" Value="0,0,3,3"/>
+        </Style>
+    </Window.Resources>
+
     <Grid Margin="6">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -10,6 +134,7 @@
             <RowDefinition Height="2*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Row 0: Connection -->
@@ -20,7 +145,7 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <GroupBox Grid.Column="0" Header="Nguồn (Source)" Padding="6" Margin="0,0,4,0">
+            <GroupBox Grid.Column="0" Header="Kết nối NGUỒN" Margin="0,0,4,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -31,25 +156,22 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Label Grid.Row="0" Grid.Column="0" Content="Server:"/>
-                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtSrcServer" Text="." Margin="2"/>
-                    <Button Grid.Row="0" Grid.Column="2" x:Name="btnTestSrc" Content="Kiểm tra" Margin="2" Padding="4,0" Click="BtnTestSrc_Click"/>
-                    <Label Grid.Row="1" Grid.Column="0" Content="User:"/>
-                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtSrcUser" Text="sa" Margin="2"/>
-                    <Label Grid.Row="1" Grid.Column="2" Content="Pass:" Margin="2,2,0,2"/>
-                    <PasswordBox Grid.Row="1" Grid.Column="3" x:Name="pwdSrcPass" Margin="2" Width="80"/>
-                    <Label Grid.Row="2" Grid.Column="0" Content="Database:"/>
-                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtSrcDb" Text="GPLX_SOGTVT" Margin="2"/>
-                    <Button Grid.Row="2" Grid.Column="3" x:Name="btnCopyToDst" Content=">" Width="28" Margin="2" Click="BtnCopyToDst_Click"/>
+                    <Label Grid.Row="0" Grid.Column="0" Content="Server:" Style="{StaticResource ConnLabel}"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" x:Name="txtSrcServer" Text="." Style="{StaticResource InputBox}"/>
+                    <Label Grid.Row="1" Grid.Column="0" Content="User:" Style="{StaticResource ConnLabel}"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtSrcUser" Text="sa" Style="{StaticResource InputBox}"/>
+                    <Label Grid.Row="1" Grid.Column="2" Content="Mật khẩu:" Style="{StaticResource FieldLabel}" Margin="4,2,0,2"/>
+                    <PasswordBox Grid.Row="1" Grid.Column="3" x:Name="pwdSrcPass" Margin="2" HorizontalAlignment="Stretch"/>
+                    <Label Grid.Row="2" Grid.Column="0" Content="Database:" Style="{StaticResource ConnLabel}"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtSrcDb" Text="GPLX_SOGTVT" Style="{StaticResource InputBox}"/>
+                    <Button Grid.Row="2" Grid.Column="2" x:Name="btnTestSrc" Content="Kiểm tra" Style="{StaticResource SmallButton}" Click="BtnTestSrc_Click"/>
+                    <TextBlock Grid.Row="2" Grid.Column="3" x:Name="txtSrcStatus" Margin="4,2,0,2" VerticalAlignment="Center" FontSize="11"/>
                 </Grid>
             </GroupBox>
 
-            <Grid Grid.Column="1" VerticalAlignment="Center" Margin="4,0">
-                <Button x:Name="btnCopyToSrc" Content="&lt;" Width="28" Margin="0,2" Click="BtnCopyToSrc_Click"/>
-            </Grid>
-
-            <GroupBox Grid.Column="2" Header="Đích (Destination)" Padding="6" Margin="4,0,0,0">
+            <GroupBox Grid.Column="2" Header="Kết nối ĐÍCH" Margin="4,0,0,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -60,22 +182,24 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Label Grid.Row="0" Grid.Column="0" Content="Server:"/>
-                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtDstServer" Text="." Margin="2"/>
-                    <Button Grid.Row="0" Grid.Column="2" x:Name="btnTestDst" Content="Kiểm tra" Margin="2" Padding="4,0" Click="BtnTestDst_Click"/>
-                    <Label Grid.Row="1" Grid.Column="0" Content="User:"/>
-                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtDstUser" Text="sa" Margin="2"/>
-                    <Label Grid.Row="1" Grid.Column="2" Content="Pass:" Margin="2,2,0,2"/>
-                    <PasswordBox Grid.Row="1" Grid.Column="3" x:Name="pwdDstPass" Margin="2" Width="80"/>
-                    <Label Grid.Row="2" Grid.Column="0" Content="Database:"/>
-                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtDstDb" Text="GPLX_CDB_SOXAYDUNG_v2" Margin="2"/>
+                    <Label Grid.Row="0" Grid.Column="0" Content="Server:" Style="{StaticResource ConnLabel}"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" x:Name="txtDstServer" Text="." Style="{StaticResource InputBox}"/>
+                    <Label Grid.Row="1" Grid.Column="0" Content="User:" Style="{StaticResource ConnLabel}"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtDstUser" Text="sa" Style="{StaticResource InputBox}"/>
+                    <Label Grid.Row="1" Grid.Column="2" Content="Mật khẩu:" Style="{StaticResource FieldLabel}" Margin="4,2,0,2"/>
+                    <PasswordBox Grid.Row="1" Grid.Column="3" x:Name="pwdDstPass" Margin="2" HorizontalAlignment="Stretch"/>
+                    <Label Grid.Row="2" Grid.Column="0" Content="Database:" Style="{StaticResource ConnLabel}"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtDstDb" Text="GPLX_CDB_SOXAYDUNG_v2" Style="{StaticResource InputBox}"/>
+                    <Button Grid.Row="2" Grid.Column="2" x:Name="btnTestDst" Content="Kiểm tra" Style="{StaticResource SmallButton}" Click="BtnTestDst_Click"/>
+                    <TextBlock Grid.Row="2" Grid.Column="3" x:Name="txtDstStatus" Margin="4,2,0,2" VerticalAlignment="Center" FontSize="11"/>
                 </Grid>
             </GroupBox>
         </Grid>
 
-        <!-- Row 1: Transform codes + course + preview -->
-        <GroupBox Grid.Row="1" Header="Chuyển đổi mã &amp; tùy chọn" Padding="6" Margin="0,6">
+        <!-- Row 1: Transform codes + date range -->
+        <GroupBox Grid.Row="1" Header="Thông số chuyển đổi &amp; khoảng ngày đồng bộ">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -87,56 +211,70 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="120"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="110"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="110"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Label Grid.Row="0" Grid.Column="0" Content="Mã Sở cũ:" Margin="2"/>
-                <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtOldSoCode" Margin="2"/>
-                <Label Grid.Row="0" Grid.Column="2" Content="→ Mới:" Margin="2"/>
-                <TextBox Grid.Row="0" Grid.Column="3" x:Name="txtNewSoCode" Margin="2"/>
+                <Label Grid.Row="0" Grid.Column="0" Content="Mã Sở cũ:" Style="{StaticResource FieldLabel}"/>
+                <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtOldSoCode" Style="{StaticResource InputBox}" Width="120" HorizontalAlignment="Left"/>
+                <Label Grid.Row="0" Grid.Column="2" Content="→ Mới:" Style="{StaticResource FieldLabel}"/>
+                <TextBox Grid.Row="0" Grid.Column="3" x:Name="txtNewSoCode" Style="{StaticResource InputBox}" Width="120" HorizontalAlignment="Left"/>
 
-                <Label Grid.Row="1" Grid.Column="0" Content="Mã khóa học:" Margin="2"/>
-                <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" x:Name="txtCourseCode" Margin="2"/>
-                <Button Grid.Row="1" Grid.Column="7" x:Name="btnPreview" Content="Xem trước" Margin="2" Padding="8,2" Click="BtnPreview_Click"/>
+                <Label Grid.Row="0" Grid.Column="4" Content="Từ ngày:" Style="{StaticResource FieldLabel}"/>
+                <DatePicker Grid.Row="0" Grid.Column="5" x:Name="dpTuNgay" Margin="2" SelectedDateFormat="Short" HorizontalAlignment="Left"/>
+                <Label Grid.Row="0" Grid.Column="6" Content="Đến ngày:" Style="{StaticResource FieldLabel}"/>
+                <DatePicker Grid.Row="0" Grid.Column="7" x:Name="dpDenNgay" Margin="2" SelectedDateFormat="Short" HorizontalAlignment="Left"/>
+
+                <Button Grid.Row="0" Grid.Column="9" x:Name="btnPreview" Style="{StaticResource PrimaryButton}" Click="BtnPreview_Click" Margin="0,2,4,2">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M12,4.5 C7,4.5 2.73,7.61 1,12 C2.73,16.39 7,19.5 12,19.5 C17,19.5 21.27,16.39 23,12 C21.27,7.61 17,4.5 12,4.5 Z M12,17 C9.24,17 7,14.76 7,12 C7,9.24 9.24,7 12,7 C14.76,7 17,9.24 17,12 C17,14.76 14.76,17 12,17 Z M12,9 C10.34,9 9,10.34 9,12 C9,13.66 10.34,15 12,15 C13.66,15 15,13.66 15,12 C15,10.34 13.66,9 12,9 Z"
+                              Fill="White" Stretch="Uniform" Width="14" Height="14" Margin="0,0,4,0"/>
+                        <TextBlock Text="Xem trước" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="10" x:Name="txtCourseCount"
+                           Margin="4,4,0,2" Foreground="#666" FontSize="11"/>
             </Grid>
         </GroupBox>
 
         <!-- Row 2: Preview tabs -->
-        <TabControl Grid.Row="2" Margin="0,0,0,6">
-            <TabItem Header="Học viên (NguoiLX)">
-                <DataGrid x:Name="dgvNguoiLX" AutoGenerateColumns="True" IsReadOnly="True"
-                          CanUserSortColumns="True" VerticalScrollBarVisibility="Auto"/>
+        <TabControl Grid.Row="2" Margin="0,2,0,4">
+            <TabItem Header="Học viên (NguoiLX_HoSo)" Style="{StaticResource TabHeader}">
+                <DataGrid x:Name="dgvNguoiLX"/>
             </TabItem>
-            <TabItem Header="Báo cáo I (BaoCaoI)">
-                <DataGrid x:Name="dgvBaoCaoI" AutoGenerateColumns="True" IsReadOnly="True"
-                          CanUserSortColumns="True" VerticalScrollBarVisibility="Auto"/>
+            <TabItem Header="Báo cáo I (BaoCaoI)" Style="{StaticResource TabHeader}">
+                <DataGrid x:Name="dgvBaoCaoI"/>
             </TabItem>
-            <TabItem Header="Báo cáo II (BaoCaoII)">
-                <DataGrid x:Name="dgvBaoCaoII" AutoGenerateColumns="True" IsReadOnly="True"
-                          CanUserSortColumns="True" VerticalScrollBarVisibility="Auto"/>
+            <TabItem Header="Báo cáo II (BaoCaoII)" Style="{StaticResource TabHeader}">
+                <DataGrid x:Name="dgvBaoCaoII"/>
             </TabItem>
         </TabControl>
 
         <!-- Row 3: Toolbar -->
-        <Grid Grid.Row="3" Margin="0,0,0,4">
+        <Grid Grid.Row="3" Margin="0,0,0,2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="130"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" x:Name="btnSaveConn" Content="Lưu kết nối" Margin="2" Padding="6,2" Click="BtnSaveConn_Click"/>
-            <Button Grid.Column="1" x:Name="btnLoadConn" Content="Tải kết nối" Margin="2" Padding="6,2" Click="BtnLoadConn_Click"/>
-            <Button Grid.Column="3" x:Name="btnSync" Content="Đồng bộ Sở" Margin="2" Padding="8,4"
-                    FontWeight="Bold" FontSize="14" Height="30" Click="BtnSync_Click"/>
+            <Button Grid.Column="1" x:Name="btnSync" Style="{StaticResource PrimaryButton}" Click="BtnSync_Click">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="▶" Margin="0,0,4,0"/>
+                    <TextBlock Text="Đồng bộ Sở" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="14"/>
+                </StackPanel>
+            </Button>
         </Grid>
 
         <!-- Row 4: Log -->
-        <TextBox Grid.Row="4" x:Name="txtLog" IsReadOnly="True" AcceptsReturn="True"
-                 FontFamily="Consolas" FontSize="10"
-                 Background="#1E1E1E" Foreground="LimeGreen" VerticalScrollBarVisibility="Auto"/>
+        <TextBox Grid.Row="4" x:Name="txtLog" Style="{StaticResource LogBox}"/>
+
+        <!-- Row 5: Status bar -->
+        <Border Grid.Row="5" Style="{StaticResource StatusBarStyle}">
+            <TextBlock x:Name="txtStatus" Foreground="White" FontSize="11">Sẵn sàng</TextBlock>
+        </Border>
     </Grid>
 </Window>

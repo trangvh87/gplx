@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
 using Microsoft.Data.SqlClient;
 
 namespace Gplx.SoApp;
@@ -15,9 +17,81 @@ public partial class MainWindow : Window
     private static readonly string ScriptsDir = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\..\docs\script_syn_so");
 
+    private string SettingsPath =>
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "connections.json");
+
     public MainWindow()
     {
         InitializeComponent();
+        LoadSettings();
+    }
+
+    // ── Settings ──
+
+    private void SaveSettings()
+    {
+        var data = new SettingsData
+        {
+            SrcServer = txtSrcServer.Text,
+            SrcUser = txtSrcUser.Text,
+            SrcPass = pwdSrcPass.Password,
+            SrcDb = txtSrcDb.Text,
+            DstServer = txtDstServer.Text,
+            DstUser = txtDstUser.Text,
+            DstPass = pwdDstPass.Password,
+            DstDb = txtDstDb.Text,
+            TuNgay = dpTuNgay.SelectedDate?.ToString("o"),
+            DenNgay = dpDenNgay.SelectedDate?.ToString("o"),
+        };
+        try
+        {
+            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(SettingsPath, json);
+        }
+        catch { }
+    }
+
+    private void LoadSettings()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return;
+            var json = File.ReadAllText(SettingsPath);
+            var data = JsonSerializer.Deserialize<SettingsData>(json);
+            if (data == null) return;
+            txtSrcServer.Text = data.SrcServer;
+            txtSrcUser.Text = data.SrcUser;
+            pwdSrcPass.Password = data.SrcPass;
+            txtSrcDb.Text = data.SrcDb;
+            txtDstServer.Text = data.DstServer;
+            txtDstUser.Text = data.DstUser;
+            pwdDstPass.Password = data.DstPass;
+            txtDstDb.Text = data.DstDb;
+            if (!string.IsNullOrEmpty(data.TuNgay) && DateTime.TryParse(data.TuNgay, out var tu))
+                dpTuNgay.SelectedDate = tu;
+            if (!string.IsNullOrEmpty(data.DenNgay) && DateTime.TryParse(data.DenNgay, out var den))
+                dpDenNgay.SelectedDate = den;
+        }
+        catch { }
+    }
+
+    // ── Get course codes from date range ──
+
+    private async Task<List<string>> GetCourseCodesAsync(string connStr, DateTime from, DateTime to)
+    {
+        var sql = @"SELECT MaKH FROM KhoaHoc
+                    WHERE NgayKG >= @from AND NgayKG <= @to
+                    ORDER BY NgayKG";
+        var dt = await QueryAsync(connStr, sql,
+            new SqlParameter("@from", from),
+            new SqlParameter("@to", to));
+        return dt.Rows.Cast<DataRow>().Select(r => r["MaKH"].ToString()!).ToList();
+    }
+
+    private static string BuildInClause(List<string> values)
+    {
+        if (values.Count == 0) return "''";
+        return string.Join(",", values.Select(v => $"'{v.Replace("'", "''")}'"));
     }
 
     // ── Preview ──
@@ -32,37 +106,53 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (dpTuNgay.SelectedDate == null || dpDenNgay.SelectedDate == null)
+        {
+            MessageBox.Show("Chọn khoảng ngày đồng bộ.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         var connStr = BuildConnString(srcServer, txtSrcUser.Text.Trim(),
             pwdSrcPass.Password, srcDb);
-        var courseCode = txtCourseCode.Text.Trim();
+
+        var from = dpTuNgay.SelectedDate!.Value.Date;
+        var to = dpDenNgay.SelectedDate.Value.Date.AddDays(1).AddSeconds(-1);
 
         AppendLog("--- Xem trước dữ liệu ---");
-
-        var sqlNguoiLX = string.IsNullOrEmpty(courseCode)
-            ? "SELECT TOP 100 * FROM NguoiLX ORDER BY NgayTao DESC"
-            : "SELECT * FROM NguoiLX WHERE MaDK IN (SELECT MaDK FROM NguoiLX_HoSo WHERE MaKhoaHoc = @p) ORDER BY NgayTao DESC";
-
-        var sqlBaoCaoI = string.IsNullOrEmpty(courseCode)
-            ? "SELECT TOP 100 * FROM BaoCaoI ORDER BY NgayTao DESC"
-            : "SELECT * FROM BaoCaoI WHERE MaKH = @p ORDER BY NgayTao DESC";
-
-        var sqlBaoCaoII = string.IsNullOrEmpty(courseCode)
-            ? "SELECT TOP 100 * FROM BaoCaoII ORDER BY NgayTao DESC"
-            : "SELECT bc2.* FROM BaoCaoII bc2 JOIN BaoCaoI bc1 ON bc2.MaBCI = bc1.MaBCI WHERE bc1.MaKH = @p ORDER BY bc2.NgayTao DESC";
+        AppendLog($"  Từ: {from:dd/MM/yyyy} đến: {to:dd/MM/yyyy}");
 
         try
         {
-            var dtNguoiLX = await QueryAsync(connStr, sqlNguoiLX, courseCode);
-            dgvNguoiLX.ItemsSource = dtNguoiLX.DefaultView;
-            AppendLog($"  NguoiLX: {dtNguoiLX.Rows.Count} bản ghi");
+            var courseCodes = await GetCourseCodesAsync(connStr, from, to);
+            txtCourseCount.Text = $"Tìm thấy {courseCodes.Count} khóa học trong khoảng này.";
+            AppendLog($"  Tìm thấy {courseCodes.Count} khóa học.");
 
-            var dtBaoCaoI = await QueryAsync(connStr, sqlBaoCaoI, courseCode);
+            if (courseCodes.Count == 0)
+            {
+                dgvNguoiLX.ItemsSource = null;
+                dgvBaoCaoI.ItemsSource = null;
+                dgvBaoCaoII.ItemsSource = null;
+                return;
+            }
+
+            var inClause = BuildInClause(courseCodes);
+
+            var dtNguoiLX = await QueryAsync(connStr,
+                $"SELECT TOP 100 * FROM NguoiLX_HoSo WHERE MaKhoaHoc IN ({inClause}) ORDER BY NgayTao DESC");
+            dgvNguoiLX.ItemsSource = dtNguoiLX.DefaultView;
+            AppendLog($"  NguoiLX_HoSo: {dtNguoiLX.Rows.Count} bản ghi");
+
+            var dtBaoCaoI = await QueryAsync(connStr,
+                $"SELECT TOP 100 * FROM BaoCaoI WHERE MaKH IN ({inClause}) ORDER BY NgayTao DESC");
             dgvBaoCaoI.ItemsSource = dtBaoCaoI.DefaultView;
             AppendLog($"  BaoCaoI: {dtBaoCaoI.Rows.Count} bản ghi");
 
-            var dtBaoCaoII = await QueryAsync(connStr, sqlBaoCaoII, courseCode);
+            var dtBaoCaoII = await QueryAsync(connStr,
+                $"SELECT TOP 100 * FROM BaoCaoII WHERE MaBCI IN (SELECT MaBCI FROM BaoCaoI WHERE MaKH IN ({inClause})) ORDER BY NgayTao DESC");
             dgvBaoCaoII.ItemsSource = dtBaoCaoII.DefaultView;
             AppendLog($"  BaoCaoII: {dtBaoCaoII.Rows.Count} bản ghi");
+
+            SaveSettings();
         }
         catch (Exception ex)
         {
@@ -70,13 +160,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private static async Task<DataTable> QueryAsync(string connStr, string sql, string? param = null)
+    private static async Task<DataTable> QueryAsync(string connStr, string sql, params SqlParameter[] parameters)
     {
         var dt = new DataTable();
         using var conn = new SqlConnection(connStr);
         using var cmd = new SqlCommand(sql, conn);
-        if (!string.IsNullOrEmpty(param))
-            cmd.Parameters.AddWithValue("@p", param);
+        if (parameters.Length > 0)
+            cmd.Parameters.AddRange(parameters);
         cmd.CommandTimeout = 120;
         using var da = new SqlDataAdapter(cmd);
         await Task.Run(() => da.Fill(dt));
@@ -97,30 +187,55 @@ public partial class MainWindow : Window
             return;
         }
 
+        var srcServer = txtSrcServer.Text.Trim();
         var srcDb = txtSrcDb.Text.Trim();
-        if (string.IsNullOrEmpty(srcDb))
+        if (string.IsNullOrEmpty(srcServer) || string.IsNullOrEmpty(srcDb))
         {
-            MessageBox.Show("Nhập tên DB nguồn.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Nhập thông tin kết nối nguồn.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (dpTuNgay.SelectedDate == null || dpDenNgay.SelectedDate == null)
+        {
+            MessageBox.Show("Chọn khoảng ngày đồng bộ.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         var dstConnStr = BuildConnString(dstServer, txtDstUser.Text.Trim(),
             pwdDstPass.Password, dstDb);
-        var courseCode = txtCourseCode.Text.Trim();
+        var srcConnStr = BuildConnString(srcServer, txtSrcUser.Text.Trim(),
+            pwdSrcPass.Password, srcDb);
         var newSoCode = txtNewSoCode.Text.Trim();
+
+        var from = dpTuNgay.SelectedDate!.Value.Date;
+        var to = dpDenNgay.SelectedDate.Value.Date.AddDays(1).AddSeconds(-1);
 
         SetUI(false);
         AppendLog("=== Đồng bộ DB Sở ===");
         AppendLog($"  Server đích: {dstServer}, DB nguồn: {srcDb}, DB đích: {dstDb}");
-        if (!string.IsNullOrEmpty(courseCode))
-            AppendLog($"  Khóa học: {courseCode}");
+        AppendLog($"  Từ: {from:dd/MM/yyyy} đến: {to:dd/MM/yyyy}");
         if (!string.IsNullOrEmpty(newSoCode))
             AppendLog($"  Mã Sở mới: {newSoCode}");
 
         try
         {
-            var runner = new ScriptRunner(ScriptsDir, srcDb, dstDb, dstConnStr,
-                courseCode: string.IsNullOrEmpty(courseCode) ? null : courseCode,
+            AppendLog("  Đang tìm khóa học...");
+            var courseCodes = await GetCourseCodesAsync(srcConnStr, from, to);
+            txtCourseCount.Text = $"Tìm thấy {courseCodes.Count} khóa học trong khoảng này.";
+            AppendLog($"  Tìm thấy {courseCodes.Count} khóa học.");
+
+            if (courseCodes.Count == 0)
+            {
+                AppendLog("Không có khóa học nào trong khoảng ngày đã chọn.");
+                return;
+            }
+
+            AppendLog($"  Mã khóa học: {string.Join(", ", courseCodes.Take(10))}" +
+                       (courseCodes.Count > 10 ? $"... (+{courseCodes.Count - 10} nữa)" : ""));
+
+            SaveSettings();
+
+            var runner = new ScriptRunner(ScriptsDir, srcDb, dstDb, srcConnStr, dstConnStr,
                 newSoCode: string.IsNullOrEmpty(newSoCode) ? null : newSoCode);
             runner.OnProgress += m => AppendLog(m);
 
@@ -150,85 +265,32 @@ public partial class MainWindow : Window
     {
         var conn = BuildConnString(txtSrcServer.Text.Trim(), txtSrcUser.Text.Trim(),
             pwdSrcPass.Password, txtSrcDb.Text.Trim());
-        await TestConnection(conn, "Nguồn");
+        await TestConnection(conn, "Nguồn", txtSrcStatus);
     }
 
     private async void BtnTestDst_Click(object sender, RoutedEventArgs e)
     {
         var conn = BuildConnString(txtDstServer.Text.Trim(), txtDstUser.Text.Trim(),
             pwdDstPass.Password, txtDstDb.Text.Trim());
-        await TestConnection(conn, "Đích");
+        await TestConnection(conn, "Đích", txtDstStatus);
     }
 
-    private void BtnCopyToDst_Click(object sender, RoutedEventArgs e)
-    {
-        txtDstServer.Text = txtSrcServer.Text;
-        txtDstUser.Text = txtSrcUser.Text;
-        pwdDstPass.Password = pwdSrcPass.Password;
-        txtDstDb.Text = txtSrcDb.Text;
-    }
-
-    private void BtnCopyToSrc_Click(object sender, RoutedEventArgs e)
-    {
-        txtSrcServer.Text = txtDstServer.Text;
-        txtSrcUser.Text = txtDstUser.Text;
-        pwdSrcPass.Password = pwdDstPass.Password;
-        txtSrcDb.Text = txtDstDb.Text;
-    }
-
-    private static async Task TestConnection(string connStr, string label)
+    private async Task TestConnection(string connStr, string label, System.Windows.Controls.TextBlock statusBlock)
     {
         try
         {
             using var conn = new SqlConnection(connStr);
             await conn.OpenAsync();
-            MessageBox.Show($"Kết nối {label} thành công!", "", MessageBoxButton.OK, MessageBoxImage.Information);
+            statusBlock.Text = "✓";
+            statusBlock.Foreground = new SolidColorBrush(Color.FromRgb(0x00, 0x80, 0x00));
+            SaveSettings();
         }
         catch (Exception ex)
         {
+            statusBlock.Text = "✗";
+            statusBlock.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x00));
             MessageBox.Show($"Kết nối {label} thất bại: {ex.Message}", "", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-    }
-
-    // ── Save / Load ──
-
-    private void BtnSaveConn_Click(object sender, RoutedEventArgs e)
-    {
-        var data = new ConnectionData
-        {
-            SrcServer = txtSrcServer.Text,
-            SrcUser = txtSrcUser.Text,
-            SrcPass = pwdSrcPass.Password,
-            SrcDb = txtSrcDb.Text,
-            DstServer = txtDstServer.Text,
-            DstUser = txtDstUser.Text,
-            DstPass = pwdDstPass.Password,
-            DstDb = txtDstDb.Text
-        };
-        var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "connections.json");
-        File.WriteAllText(path, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
-        AppendLog("Đã lưu cấu hình kết nối.");
-    }
-
-    private void BtnLoadConn_Click(object sender, RoutedEventArgs e)
-    {
-        var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "connections.json");
-        if (!File.Exists(path))
-        {
-            MessageBox.Show("Không tìm thấy tập tin cấu hình.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        var data = JsonSerializer.Deserialize<ConnectionData>(File.ReadAllText(path));
-        if (data == null) return;
-        txtSrcServer.Text = data.SrcServer;
-        txtSrcUser.Text = data.SrcUser;
-        pwdSrcPass.Password = data.SrcPass;
-        txtSrcDb.Text = data.SrcDb;
-        txtDstServer.Text = data.DstServer;
-        txtDstUser.Text = data.DstUser;
-        pwdDstPass.Password = data.DstPass;
-        txtDstDb.Text = data.DstDb;
-        AppendLog("Đã tải cấu hình kết nối.");
     }
 
     // ── Helpers ──
@@ -242,6 +304,7 @@ public partial class MainWindow : Window
         }
         txtLog.AppendText(message + Environment.NewLine);
         txtLog.ScrollToEnd();
+        txtStatus.Text = message;
     }
 
     private void SetUI(bool enabled)
@@ -257,18 +320,15 @@ public partial class MainWindow : Window
         txtDstDb.IsEnabled = enabled;
         btnTestSrc.IsEnabled = enabled;
         btnTestDst.IsEnabled = enabled;
-        btnCopyToDst.IsEnabled = enabled;
-        btnCopyToSrc.IsEnabled = enabled;
-        btnSaveConn.IsEnabled = enabled;
-        btnLoadConn.IsEnabled = enabled;
         txtOldSoCode.IsEnabled = enabled;
         txtNewSoCode.IsEnabled = enabled;
-        txtCourseCode.IsEnabled = enabled;
+        dpTuNgay.IsEnabled = enabled;
+        dpDenNgay.IsEnabled = enabled;
         btnPreview.IsEnabled = enabled;
         btnSync.IsEnabled = enabled;
     }
 
-    private sealed class ConnectionData
+    private sealed class SettingsData
     {
         public string SrcServer { get; set; } = "";
         public string SrcUser { get; set; } = "";
@@ -278,5 +338,7 @@ public partial class MainWindow : Window
         public string DstUser { get; set; } = "";
         public string DstPass { get; set; } = "";
         public string DstDb { get; set; } = "";
+        public string? TuNgay { get; set; }
+        public string? DenNgay { get; set; }
     }
 }
